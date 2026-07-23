@@ -1,5 +1,5 @@
 import React from 'react';
-import { SettingsConfig } from '../types';
+import { SettingsConfig, AppUser } from '../types';
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -10,10 +10,12 @@ interface HeaderProps {
   setSearchTerm: (term: string) => void;
   settings: SettingsConfig;
   userRole: 'admin' | 'user';
+  currentUser: AppUser | null;
   onOpenAdminLogin: () => void;
   onLogoutAdmin: () => void;
   onOpenSettings: () => void;
   onOpenGasCode: () => void;
+  onOpenUserManagement: () => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
 }
@@ -27,13 +29,16 @@ export const Header: React.FC<HeaderProps> = ({
   setSearchTerm,
   settings,
   userRole,
+  currentUser,
   onOpenAdminLogin,
   onLogoutAdmin,
   onOpenSettings,
   onOpenGasCode,
+  onOpenUserManagement,
   activeTab,
   setActiveTab,
 }) => {
+
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -113,18 +118,47 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Section: Role Status Badge & Action Buttons */}
           <div className="flex items-center gap-2">
             
-            {/* Role Status Badge */}
+            {/* Role Status Badge / User Profile */}
             {userRole === 'admin' ? (
-              <button
-                type="button"
-                onClick={onLogoutAdmin}
-                className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-900 text-emerald-400 border border-slate-700 flex items-center gap-1.5 shadow-xs hover:bg-slate-800 transition"
-                title="คลิกเพื่อออกจากระบบแอดมิน"
-              >
-                <i className="fa-solid fa-user-shield text-xs"></i>
-                <span className="hidden sm:inline">Admin Mode</span>
-                <i className="fa-solid fa-right-from-bracket text-[10px] text-slate-400 ml-0.5"></i>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* User Profile Badge */}
+                <button
+                  type="button"
+                  onClick={onLogoutAdmin}
+                  className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-900 text-white border border-slate-700 flex items-center gap-1.5 shadow-xs hover:bg-slate-800 transition"
+                  title="คลิกเพื่อออกจากระบบ"
+                >
+                  {currentUser?.provider === 'google' ? (
+                    <i className="fa-brands fa-google text-rose-400 text-xs"></i>
+                  ) : currentUser?.provider === 'line' ? (
+                    <i className="fa-brands fa-line text-emerald-400 text-xs"></i>
+                  ) : (
+                    <i className="fa-solid fa-user-shield text-emerald-400 text-xs"></i>
+                  )}
+                  <span className="hidden sm:inline max-w-[120px] truncate">
+                    {currentUser?.name || 'Admin'}
+                  </span>
+                  {currentUser?.role === 'super_admin' && (
+                    <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-400 text-slate-900">
+                      Super
+                    </span>
+                  )}
+                  <i className="fa-solid fa-right-from-bracket text-[10px] text-slate-400 ml-0.5"></i>
+                </button>
+
+                {/* Super Admin User Management Button */}
+                {(currentUser?.role === 'super_admin' || currentUser?.emailOrId === 'akaporn1234@gmail.com') && (
+                  <button
+                    type="button"
+                    onClick={onOpenUserManagement}
+                    className="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 border border-amber-300 text-xs font-bold flex items-center gap-1.5 transition"
+                    title="จัดการสิทธิ์ผู้ใช้งาน (User Management)"
+                  >
+                    <i className="fa-solid fa-users-gear text-amber-600 text-sm"></i>
+                    <span className="hidden xl:inline">จัดการ User</span>
+                  </button>
+                )}
+              </div>
             ) : (
               <button
                 type="button"

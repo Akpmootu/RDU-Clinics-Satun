@@ -80,3 +80,22 @@ export interface SettingsConfig {
   autoSyncInterval: number; // minutes (0 = disabled)
   isLiveApiActive: boolean;
 }
+
+export type UserRole = 'super_admin' | 'admin' | 'viewer' | 'user';
+export type UserStatus = 'pending' | 'active' | 'suspended' | 'blocked';
+export type AuthProvider = 'google' | 'line';
+
+export interface AppUser {
+  id: string;
+  emailOrId: string;
+  name: string;
+  provider: AuthProvider;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  avatarUrl?: string;
+  lastLoginAt?: string;
+}
+

@@ -1,6 +1,7 @@
 import React from 'react';
-import { DistrictName } from '../types';
+import { DistrictName, AppUser } from '../types';
 import { SATUN_DISTRICTS } from '../data/initialData';
+import { maskIdentifier } from '../services/userService';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -12,10 +13,12 @@ interface SidebarProps {
   totalClinicsCount: number;
   passedCount: number;
   userRole: 'admin' | 'user';
+  currentUser: AppUser | null;
   onOpenAdminLogin: () => void;
   onLogoutAdmin: () => void;
   onOpenSettings: () => void;
   onOpenGasCode: () => void;
+  onOpenUserManagement: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -28,11 +31,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   totalClinicsCount,
   passedCount,
   userRole,
+  currentUser,
   onOpenAdminLogin,
   onLogoutAdmin,
   onOpenSettings,
   onOpenGasCode,
+  onOpenUserManagement,
 }) => {
+
   const menuItems = [
     {
       id: 'landing',
@@ -76,6 +82,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: 'fa-solid fa-clock-rotate-left',
       badge: 'เรียลไทม์',
     },
+    {
+      id: 'admin-login',
+      label: 'เข้าสู่ระบบผู้ดูแลระบบ',
+      subLabel: 'Admin Login (OAuth)',
+      icon: 'fa-solid fa-[#00A67E] fa-shield-halved text-[#00A67E]',
+      badge: 'OAuth 2.0',
+    },
   ];
 
   return (
@@ -100,17 +113,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* User / System Info Card with Role Switcher */}
           <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-800 text-white shadow-md space-y-2">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-emerald-200">
-                <i className={`fa-solid ${userRole === 'admin' ? 'fa-user-shield' : 'fa-user'} text-lg`}></i>
+              <div className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-emerald-200 shrink-0 overflow-hidden">
+                {currentUser?.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover" />
+                ) : (
+                  <i className={`fa-solid ${userRole === 'admin' ? 'fa-user-shield' : 'fa-user'} text-lg`}></i>
+                )}
               </div>
-              <div className="flex-1">
-                <h2 className="text-[10px] font-semibold text-emerald-100 uppercase tracking-wider">
-                  {userRole === 'admin' ? 'สถานะ: ผู้ดูแลระบบ (Admin)' : 'สถานะ: ผู้ใช้งานทั่วไป (Guest)'}
+              <div className="flex-1 min-w-0">
+                <h2 className="text-[10px] font-semibold text-emerald-100 uppercase tracking-wider flex items-center gap-1">
+                  <span>{userRole === 'admin' ? (currentUser?.role === 'super_admin' ? 'Super Admin' : 'Admin') : 'Guest'}</span>
+                  {currentUser?.provider === 'google' && <i className="fa-brands fa-google text-rose-300"></i>}
+                  {currentUser?.provider === 'line' && <i className="fa-brands fa-line text-emerald-300"></i>}
                 </h2>
-                <p className="text-xs font-bold text-white">กลุ่มงานเภสัชกรรม สสจ.สตูล</p>
+                <p className="text-xs font-bold text-white truncate">
+                  {userRole === 'admin' ? (currentUser?.name || 'Admin User') : 'ผู้ใช้งานทั่วไป'}
+                </p>
                 <div className="mt-0.5 flex items-center gap-1 text-[10px] text-emerald-200">
                   <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>ระบบพร้อมใช้งาน 2569</span>
+                  <span className="truncate">{currentUser?.emailOrId ? maskIdentifier(currentUser.emailOrId) : 'ระบบพร้อมใช้งาน 2569'}</span>
                 </div>
               </div>
             </div>
@@ -123,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="w-full py-1.5 px-3 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition flex items-center justify-center gap-1.5"
                 >
                   <i className="fa-solid fa-right-from-bracket text-xs text-rose-300"></i>
-                  <span>ออกจากระบบ Admin Mode</span>
+                  <span>ออกจากระบบ</span>
                 </button>
               ) : (
                 <button
@@ -131,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="w-full py-1.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
                 >
                   <i className="fa-solid fa-key text-xs"></i>
-                  <span>เข้าสู่ระบบ Admin (บันทึก/แก้ไข)</span>
+                  <span>เข้าสู่ระบบ Admin</span>
                 </button>
               )}
             </div>
@@ -229,6 +250,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Bottom Actions Footer inside Sidebar (Admin Only) */}
         {userRole === 'admin' && (
           <div className="p-4 border-t border-slate-200 space-y-2 bg-slate-50/80">
+            {(currentUser?.role === 'super_admin' || currentUser?.emailOrId === 'akaporn1234@gmail.com') && (
+              <button
+                onClick={() => {
+                  onOpenUserManagement();
+                  if (window.innerWidth < 1024) setIsOpen(false);
+                }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold transition shadow-xs"
+              >
+                <i className="fa-solid fa-users-gear text-slate-900"></i>
+                <span>จัดการสิทธิ์ผู้ใช้งาน (User)</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 onOpenGasCode();

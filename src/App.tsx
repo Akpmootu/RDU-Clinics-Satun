@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import Swal from 'sweetalert2';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
@@ -10,12 +11,14 @@ import { ChartsView } from './components/ChartsView';
 import { AuditLogView } from './components/AuditLogView';
 import { StatusUpdateModal } from './components/StatusUpdateModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
+import { AdminLoginPage } from './components/AdminLoginPage';
+import { UserManagementModal } from './components/UserManagementModal';
 import { ClinicDetailModal } from './components/ClinicDetailModal';
 import { GasScriptModal } from './components/GasScriptModal';
 import { SettingsModal } from './components/SettingsModal';
 import { Footer } from './components/Footer';
 
-import { Clinic, DistrictName, AuditLog, AssessmentStatus, SettingsConfig } from './types';
+import { Clinic, DistrictName, AuditLog, AssessmentStatus, SettingsConfig, AppUser } from './types';
 import { INITIAL_CLINICS, INITIAL_AUDIT_LOGS } from './data/initialData';
 import {
   loadSettings,
@@ -28,6 +31,13 @@ import {
   fetchFromGas,
   updateClinicStatusApi,
 } from './services/api';
+import {
+  loadAppUsers,
+  saveAppUsers,
+  loadCurrentUser,
+  saveCurrentUser,
+  DEFAULT_USERS,
+} from './services/userService';
 
 export default function App() {
   // --- Persistent & Local States ---
@@ -36,7 +46,12 @@ export default function App() {
   const [logs, setLogs] = useState<AuditLog[]>(loadLocalLogs());
 
   // --- Role & Authentication State ---
-  const [userRole, setUserRole] = useState<'admin' | 'user'>('user');
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => loadCurrentUser());
+  const [userRole, setUserRole] = useState<'admin' | 'user'>(() => {
+    const savedUser = loadCurrentUser();
+    return savedUser && savedUser.status === 'active' ? 'admin' : 'user';
+  });
+  const [appUsers, setAppUsers] = useState<AppUser[]>(() => loadAppUsers());
 
   // --- UI Layout States ---
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
@@ -47,6 +62,7 @@ export default function App() {
 
   // --- Modal States ---
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState<boolean>(false);
+  const [isUserManagementModalOpen, setIsUserManagementModalOpen] = useState<boolean>(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState<boolean>(false);
   const [clinicToView, setClinicToView] = useState<Clinic | null>(null);
@@ -54,6 +70,7 @@ export default function App() {
   const [isGasCodeModalOpen, setIsGasCodeModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
 
   // --- Sync with Live Google Apps Script API if active ---
   const refreshDataFromGas = useCallback(async () => {
@@ -77,9 +94,50 @@ export default function App() {
     }
   }, [settings.isLiveApiActive, settings.gasWebAppUrl]);
 
+  // Check backend session via /api/auth/me & handle OAuth callback redirect parameter
   useEffect(() => {
-    refreshDataFromGas();
-  }, [refreshDataFromGas]);
+    fetch('/api/auth/me')
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then((data) => {
+        if (data && data.status === 'success' && data.user) {
+          const authUser: AppUser = {
+            id: data.user.id,
+            name: data.user.displayName,
+            emailOrId: data.user.emailOrId,
+            provider: data.user.provider,
+            role: data.user.role,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          };
+          setCurrentUser(authUser);
+          setUserRole('admin');
+          saveCurrentUser(authUser);
+        }
+      })
+      .catch(() => {});
+
+    // Check URL search query for OAuth signals & admin routes
+    const urlParams = new URLSearchParams(window.location.search);
+    const authStatus = urlParams.get('auth');
+    if (window.location.pathname.startsWith('/admin') || (authStatus && authStatus !== 'success')) {
+      setActiveTab('admin-login');
+    }
+
+    if (authStatus === 'success') {
+      Swal.fire({
+        icon: 'success',
+        title: 'ยืนยันตัวตนสำเร็จ! 🔐',
+        text: 'ยินดีต้อนรับสู่ระบบบริหารจัดการข้อมูล RDU คลินิกเอกชน สตูล',
+        confirmButtonColor: '#00A67E',
+        timer: 2500,
+      });
+      // Clean query string
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   // --- Computed Provincial Summaries ---
   const summary = useMemo(() => {
@@ -112,13 +170,38 @@ export default function App() {
     setIsUpdateModalOpen(true);
   };
 
-  const handleAdminLoginSuccess = () => {
+  const handleAdminLoginSuccess = (user: AppUser) => {
+    setCurrentUser(user);
     setUserRole('admin');
+    saveCurrentUser(user);
     setIsAdminLoginModalOpen(false);
   };
 
   const handleLogoutAdmin = () => {
+    setCurrentUser(null);
     setUserRole('user');
+    saveCurrentUser(null);
+    Swal.fire({
+      icon: 'info',
+      title: 'ออกจากระบบเรียบร้อยแล้ว 👋',
+      timer: 1500,
+      showConfirmButton: false,
+    });
+  };
+
+  const handleUpdateAppUsers = (newUsers: AppUser[]) => {
+    setAppUsers(newUsers);
+    saveAppUsers(newUsers);
+  };
+
+  const handleResetAppUsers = () => {
+    setAppUsers(DEFAULT_USERS);
+    saveAppUsers(DEFAULT_USERS);
+    Swal.fire({
+      icon: 'success',
+      title: 'คืนค่าเริ่มต้นผู้ใช้งานเรียบร้อยแล้ว!',
+      confirmButtonColor: '#059669',
+    });
   };
 
   const handleSaveClinicStatus = async (
@@ -171,10 +254,12 @@ export default function App() {
         setSearchTerm={setSearchTerm}
         settings={settings}
         userRole={userRole}
-        onOpenAdminLogin={() => setIsAdminLoginModalOpen(true)}
+        currentUser={currentUser}
+        onOpenAdminLogin={() => setActiveTab('admin-login')}
         onLogoutAdmin={handleLogoutAdmin}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenGasCode={() => setIsGasCodeModalOpen(true)}
+        onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
       />
@@ -193,10 +278,12 @@ export default function App() {
           totalClinicsCount={summary.totalTargetClinics}
           passedCount={summary.passedClinics}
           userRole={userRole}
-          onOpenAdminLogin={() => setIsAdminLoginModalOpen(true)}
+          currentUser={currentUser}
+          onOpenAdminLogin={() => setActiveTab('admin-login')}
           onLogoutAdmin={handleLogoutAdmin}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onOpenGasCode={() => setIsGasCodeModalOpen(true)}
+          onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
         />
 
         {/* Primary Page Content Area */}
@@ -218,7 +305,7 @@ export default function App() {
               summary={summary}
               userRole={userRole}
               onNavigateToDashboard={() => setActiveTab('dashboard')}
-              onOpenAdminLogin={() => setIsAdminLoginModalOpen(true)}
+              onOpenAdminLogin={() => setActiveTab('admin-login')}
             />
           )}
 
@@ -293,6 +380,21 @@ export default function App() {
             </div>
           )}
 
+          {/* Tab 6: Admin Login Page (Dedicated Route View) */}
+          {activeTab === 'admin-login' && (
+            <div className="animate-fadeIn">
+              <AdminLoginPage
+                currentUser={currentUser}
+                onLoginSuccess={(user) => {
+                  handleAdminLoginSuccess(user);
+                  setActiveTab('dashboard');
+                }}
+                onLogout={handleLogoutAdmin}
+                onGoBackHome={() => setActiveTab('landing')}
+              />
+            </div>
+          )}
+
         </main>
       </div>
 
@@ -310,6 +412,16 @@ export default function App() {
         isOpen={isAdminLoginModalOpen}
         onClose={() => setIsAdminLoginModalOpen(false)}
         onLoginSuccess={handleAdminLoginSuccess}
+      />
+
+      {/* User Management Modal (Super Admin) */}
+      <UserManagementModal
+        isOpen={isUserManagementModalOpen}
+        onClose={() => setIsUserManagementModalOpen(false)}
+        users={appUsers}
+        currentUser={currentUser}
+        onUpdateUsers={handleUpdateAppUsers}
+        onResetUsers={handleResetAppUsers}
       />
 
       {/* Clinic Detail View Modal (Role-aware) */}
