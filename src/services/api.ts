@@ -5,7 +5,7 @@ const SETTINGS_STORAGE_KEY = 'rdu_satun_settings_v1';
 const CLINICS_STORAGE_KEY = 'rdu_satun_clinics_v1';
 const LOGS_STORAGE_KEY = 'rdu_satun_logs_v1';
 
-export const PRESET_GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxSatunRDUClinics2569WebAppService/exec';
+export const PRESET_GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXONrK9d6i12UOjUrYiN9t-Nv3ompuh1iFFlm4E4qXqRiRKbVGcgsqJyxncq7g-vxcw/exec';
 export const PRESET_SPREADSHEET_ID = '1AbC_Satun_RDU_Private_Clinics_Sheet_2569';
 export const PRESET_TELEGRAM_BOT_TOKEN = '';
 export const PRESET_TELEGRAM_CHAT_ID = '';
@@ -29,11 +29,14 @@ export function loadSettings(): SettingsConfig {
       return DEFAULT_SETTINGS;
     }
     const parsed = JSON.parse(saved);
+    const savedUrl = parsed.gasWebAppUrl?.trim();
+    const isUrlPlaceholder = !savedUrl || savedUrl.includes('AKfycbxSatunRDUClinics2569WebAppService');
+
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
-      // If user saved settings previously with empty gasWebAppUrl, fallback to preset
-      gasWebAppUrl: parsed.gasWebAppUrl?.trim() ? parsed.gasWebAppUrl : DEFAULT_SETTINGS.gasWebAppUrl,
+      // If user saved settings previously with empty/placeholder gasWebAppUrl, fallback to preset or env
+      gasWebAppUrl: !isUrlPlaceholder ? savedUrl : DEFAULT_SETTINGS.gasWebAppUrl,
       spreadsheetId: parsed.spreadsheetId?.trim() ? parsed.spreadsheetId : DEFAULT_SETTINGS.spreadsheetId,
       telegramBotToken: parsed.telegramBotToken !== undefined ? parsed.telegramBotToken : DEFAULT_SETTINGS.telegramBotToken,
       telegramChatId: parsed.telegramChatId !== undefined ? parsed.telegramChatId : DEFAULT_SETTINGS.telegramChatId,
@@ -122,23 +125,43 @@ export function calculateSummaries(clinics: Clinic[]): ProvincialSummary {
 
 // --- Live Google Apps Script API Calls ---
 export async function fetchFromGas(webAppUrl: string) {
-  if (!webAppUrl) throw new Error('กรุณาระบุ URL ของ Google Apps Script Web App');
-  
-  const response = await fetch(webAppUrl + '?action=getAllData', {
-    method: 'GET',
-    headers: { 'Accept': 'application/json' }
-  });
-  
-  if (!response.ok) {
-    throw new Error(`การเชื่อมต่อล้มเหลว (HTTP ${response.status})`);
+  if (!webAppUrl || !webAppUrl.trim()) {
+    throw new Error('ยังไม่ได้ระบุ URL ของ Google Apps Script Web App');
   }
-  
-  const json = await response.json();
-  if (json.status !== 'success') {
-    throw new Error(json.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Sheets');
+
+  const cleanUrl = webAppUrl.trim();
+
+  // If the URL is still using the default placeholder or invalid structure, don't trigger fetch to avoid CORS errors
+  if (
+    cleanUrl.includes('AKfycbxSatunRDUClinics2569WebAppService') ||
+    !cleanUrl.startsWith('https://script.google.com/macros/s/')
+  ) {
+    throw new Error('ยังไม่ได้ระบุ Web App URL จริง กรุณานำ URL ที่ได้จากการ Deploy ใน Google Apps Script มาใส่ในหน้าตั้งค่า');
   }
-  
-  return json.data;
+
+  try {
+    const separator = cleanUrl.includes('?') ? '&' : '?';
+    const response = await fetch(`${cleanUrl}${separator}action=getAllData`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`การเชื่อมต่อล้มเหลว (HTTP ${response.status})`);
+    }
+
+    const json = await response.json();
+    if (json.status !== 'success') {
+      throw new Error(json.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Sheets');
+    }
+
+    return json.data;
+  } catch (err: any) {
+    if (err.name === 'TypeError' || err.message?.includes('Failed to fetch')) {
+      throw new Error('ไม่สามารถเชื่อมต่อกับ Google Apps Script Web App ได้ (กรุณาตรวจสอบ URL หรือตั้งค่า Web App ให้สิทธิ์เป็น "Anyone / ทุกคน")');
+    }
+    throw err;
+  }
 }
 
 export async function updateClinicStatusApi(
@@ -187,8 +210,13 @@ export async function updateClinicStatusApi(
 
   let telegramSent = false;
 
-  // 1. Send via GAS if Live API is active
-  if (settings.isLiveApiActive && settings.gasWebAppUrl) {
+  // 1. Send via GAS if Live API is active and valid URL provided
+  if (
+    settings.isLiveApiActive &&
+    settings.gasWebAppUrl &&
+    !settings.gasWebAppUrl.includes('AKfycbxSatunRDUClinics2569WebAppService') &&
+    settings.gasWebAppUrl.startsWith('https://script.google.com/macros/s/')
+  ) {
     try {
       const response = await fetch(settings.gasWebAppUrl, {
         method: 'POST',

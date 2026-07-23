@@ -226,20 +226,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         </div>
 
-        {/* Bottom Actions Footer inside Sidebar */}
-        <div className="p-4 border-t border-slate-200 space-y-2 bg-slate-50/80">
-          <button
-            onClick={() => {
-              onOpenGasCode();
-              if (window.innerWidth < 1024) setIsOpen(false);
-            }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-100 transition shadow-2xs"
-          >
-            <i className="fa-solid fa-code text-emerald-600"></i>
-            <span>คัดลอก Code.gs</span>
-          </button>
+        {/* Bottom Actions Footer inside Sidebar (Admin Only) */}
+        {userRole === 'admin' && (
+          <div className="p-4 border-t border-slate-200 space-y-2 bg-slate-50/80">
+            <button
+              onClick={() => {
+                onOpenGasCode();
+                if (window.innerWidth < 1024) setIsOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-100 transition shadow-2xs"
+            >
+              <i className="fa-solid fa-code text-emerald-600"></i>
+              <span>คัดลอก Code.gs</span>
+            </button>
 
-          {userRole === 'admin' && (
             <button
               onClick={() => {
                 onOpenSettings();
@@ -250,8 +250,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <i className="fa-solid fa-gear"></i>
               <span>ตั้งค่า Google Sheets & Bot</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
     </>
   );

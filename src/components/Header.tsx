@@ -50,22 +50,23 @@ export const Header: React.FC<HeaderProps> = ({
               <i className={`fa-solid ${sidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl`}></i>
             </button>
 
-            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveTab('landing')}>
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-600/20">
-                <i className="fa-solid fa-pills text-xl"></i>
+            <div className="flex items-center gap-2 sm:gap-2.5 cursor-pointer" onClick={() => setActiveTab('landing')}>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-600/20 shrink-0">
+                <i className="fa-solid fa-pills text-lg sm:text-xl"></i>
               </div>
-              <div className="hidden xs:block">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+              <div className="flex flex-col justify-center">
+                <div className="flex items-center gap-1.5">
+                  <h1 className="text-sm sm:text-base lg:text-lg font-bold text-slate-900 leading-tight whitespace-nowrap">
                     RDU Clinics <span className="text-emerald-600 font-extrabold">Satun</span>
                   </h1>
-                  <span className="hidden md:inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
                     2569
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 flex items-center gap-1">
-                  <i className="fa-solid fa-hospital text-[10px] text-emerald-500"></i>
-                  <span>สำนักงานสาธารณสุขจังหวัดสตูล</span>
+                <p className="text-[10px] sm:text-xs text-slate-500 flex items-center gap-1 truncate">
+                  <i className="fa-solid fa-hospital text-[9px] sm:text-[10px] text-emerald-500"></i>
+                  <span className="hidden sm:inline">สำนักงานสาธารณสุขจังหวัดสตูล</span>
+                  <span className="sm:hidden">สสจ.สตูล</span>
                 </p>
               </div>
             </div>
@@ -144,46 +145,49 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
 
-            {/* TV Mode Toggle */}
-            <button
-              type="button"
-              onClick={() => setTvMode((prev) => !prev)}
-              className={`p-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
-                tvMode
-                  ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-300'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-              title="เปิด/ปิด โหมดแสดงผลหน้าจอ TV Dashboard"
-              aria-label="โหมด TV Display"
-            >
-              <i className="fa-solid fa-tv text-sm"></i>
-              <span className="hidden sm:inline">TV Mode</span>
-            </button>
-
-            {/* Google Apps Script Code Button */}
-            <button
-              type="button"
-              onClick={onOpenGasCode}
-              className="p-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition text-xs font-medium flex items-center gap-1.5"
-              title="ดูโค้ด Google Apps Script (Code.gs)"
-              aria-label="โค้ด Google Apps Script"
-            >
-              <i className="fa-solid fa-code text-emerald-600 text-sm"></i>
-              <span className="hidden lg:inline">Code.gs</span>
-            </button>
-
-            {/* Settings Button - Only visible for Admin */}
+            {/* Admin-only Tools: TV Mode, Code.gs, Settings */}
             {userRole === 'admin' && (
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                className="p-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition text-xs font-medium flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                title="ตั้งค่าระบบ และ Telegram Webhook"
-                aria-label="ตั้งค่าระบบ"
-              >
-                <i className="fa-solid fa-gear text-slate-600 text-sm"></i>
-                <span className="hidden xl:inline">ตั้งค่า</span>
-              </button>
+              <>
+                {/* TV Mode Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setTvMode((prev) => !prev)}
+                  className={`p-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
+                    tvMode
+                      ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-300'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                  title="เปิด/ปิด โหมดแสดงผลหน้าจอ TV Dashboard"
+                  aria-label="โหมด TV Display"
+                >
+                  <i className="fa-solid fa-tv text-sm"></i>
+                  <span className="hidden sm:inline">TV Mode</span>
+                </button>
+
+                {/* Google Apps Script Code Button */}
+                <button
+                  type="button"
+                  onClick={onOpenGasCode}
+                  className="p-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition text-xs font-medium flex items-center gap-1.5"
+                  title="ดูโค้ด Google Apps Script (Code.gs)"
+                  aria-label="โค้ด Google Apps Script"
+                >
+                  <i className="fa-solid fa-code text-emerald-600 text-sm"></i>
+                  <span className="hidden lg:inline">Code.gs</span>
+                </button>
+
+                {/* Settings Button */}
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="p-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition text-xs font-medium flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  title="ตั้งค่าระบบ และ Telegram Webhook"
+                  aria-label="ตั้งค่าระบบ"
+                >
+                  <i className="fa-solid fa-gear text-slate-600 text-sm"></i>
+                  <span className="hidden xl:inline">ตั้งค่า</span>
+                </button>
+              </>
             )}
           </div>
 
