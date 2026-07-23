@@ -5,20 +5,39 @@ const SETTINGS_STORAGE_KEY = 'rdu_satun_settings_v1';
 const CLINICS_STORAGE_KEY = 'rdu_satun_clinics_v1';
 const LOGS_STORAGE_KEY = 'rdu_satun_logs_v1';
 
+export const PRESET_GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxSatunRDUClinics2569WebAppService/exec';
+export const PRESET_SPREADSHEET_ID = '1AbC_Satun_RDU_Private_Clinics_Sheet_2569';
+export const PRESET_TELEGRAM_BOT_TOKEN = '';
+export const PRESET_TELEGRAM_CHAT_ID = '';
+
+const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+
 export const DEFAULT_SETTINGS: SettingsConfig = {
-  gasWebAppUrl: '',
-  spreadsheetId: '1AbC_Satun_RDU_Private_Clinics_Sheet_2569',
-  telegramBotToken: '',
-  telegramChatId: '',
+  gasWebAppUrl: env.VITE_GAS_WEB_APP_URL || PRESET_GAS_WEB_APP_URL,
+  spreadsheetId: env.VITE_SPREADSHEET_ID || PRESET_SPREADSHEET_ID,
+  telegramBotToken: env.VITE_TELEGRAM_BOT_TOKEN || PRESET_TELEGRAM_BOT_TOKEN,
+  telegramChatId: env.VITE_TELEGRAM_CHAT_ID || PRESET_TELEGRAM_CHAT_ID,
   autoSyncInterval: 0,
-  isLiveApiActive: false,
+  isLiveApiActive: true,
 };
 
 // --- Storage Utilities ---
 export function loadSettings(): SettingsConfig {
   try {
     const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+    if (!saved) {
+      return DEFAULT_SETTINGS;
+    }
+    const parsed = JSON.parse(saved);
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      // If user saved settings previously with empty gasWebAppUrl, fallback to preset
+      gasWebAppUrl: parsed.gasWebAppUrl?.trim() ? parsed.gasWebAppUrl : DEFAULT_SETTINGS.gasWebAppUrl,
+      spreadsheetId: parsed.spreadsheetId?.trim() ? parsed.spreadsheetId : DEFAULT_SETTINGS.spreadsheetId,
+      telegramBotToken: parsed.telegramBotToken !== undefined ? parsed.telegramBotToken : DEFAULT_SETTINGS.telegramBotToken,
+      telegramChatId: parsed.telegramChatId !== undefined ? parsed.telegramChatId : DEFAULT_SETTINGS.telegramChatId,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
