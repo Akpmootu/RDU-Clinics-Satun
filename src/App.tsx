@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { LandingPage } from './components/LandingPage';
+import { LandingHeader } from './components/LandingHeader';
 import { ProvincialKpiHeader } from './components/ProvincialKpiHeader';
 import { DistrictCardsGrid } from './components/DistrictCardsGrid';
 import { DataTableView } from './components/DataTableView';
@@ -271,42 +272,24 @@ export default function App() {
 
   return (
     <div className={`min-h-screen bg-slate-50 text-slate-800 font-['Kanit',sans-serif] flex flex-col ${
-      tvMode ? 'bg-slate-900 text-slate-100' : 'bg-gradient-animated'
+      tvMode && activeTab !== 'landing' ? 'bg-slate-900 text-slate-100' : activeTab === 'landing' ? '' : 'bg-gradient-animated'
     }`}>
       
-      {/* Pinned Sticky Header */}
-      <Header
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        tvMode={tvMode}
-        setTvMode={setTvMode}
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        settings={settings}
-        userRole={userRole}
-        currentUser={currentUser}
-        onOpenAdminLogin={() => setActiveTab('admin-login')}
-        onLogoutAdmin={handleLogoutAdmin}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
-        onOpenGasCode={() => setIsGasCodeModalOpen(true)}
-        onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
-
-      {/* Main Layout Container */}
-      <div className="flex-1 flex max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6 relative">
-        
-        {/* Gemini-Style Sidebar Drawer */}
-        <Sidebar
-          isOpen={sidebarOpen}
-          setIsOpen={setSidebarOpen}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          selectedDistrict={selectedDistrict}
-          setSelectedDistrict={setSelectedDistrict}
-          totalClinicsCount={summary.totalTargetClinics}
-          passedCount={summary.passedClinics}
+      {activeTab === 'landing' ? (
+        <LandingHeader
+          userRole={userRole}
+          onNavigateToDashboard={() => setActiveTab('dashboard')}
+          onOpenAdminLogin={() => setActiveTab('admin-login')}
+        />
+      ) : (
+        <Header
+          sidebarOpen={sidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          tvMode={tvMode}
+          setTvMode={setTvMode}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          settings={settings}
           userRole={userRole}
           currentUser={currentUser}
           onOpenAdminLogin={() => setActiveTab('admin-login')}
@@ -314,13 +297,46 @@ export default function App() {
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onOpenGasCode={() => setIsGasCodeModalOpen(true)}
           onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
         />
+      )}
+
+      {/* Main Layout Container */}
+      <div className={activeTab === 'landing'
+        ? 'flex-1 w-full'
+        : 'relative mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6 lg:px-8'
+      }>
+
+        {/* Gemini-Style Sidebar Drawer */}
+        {activeTab !== 'landing' && (
+          <Sidebar
+            isOpen={sidebarOpen}
+            setIsOpen={setSidebarOpen}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            selectedDistrict={selectedDistrict}
+            setSelectedDistrict={setSelectedDistrict}
+            totalClinicsCount={summary.totalTargetClinics}
+            passedCount={summary.passedClinics}
+            userRole={userRole}
+            currentUser={currentUser}
+            onOpenAdminLogin={() => setActiveTab('admin-login')}
+            onLogoutAdmin={handleLogoutAdmin}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
+            onOpenGasCode={() => setIsGasCodeModalOpen(true)}
+            onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
+          />
+        )}
 
         {/* Primary Page Content Area */}
-        <main className="flex-1 space-y-6 pb-20 md:pb-8 w-full overflow-hidden">
+        <main className={activeTab === 'landing'
+          ? 'w-full flex-1'
+          : 'w-full flex-1 space-y-6 overflow-hidden pb-20 md:pb-8'
+        }>
           
           {/* Syncing Indicator Banner */}
-          {isLoading && (
+          {isLoading && activeTab !== 'landing' && (
             <div className="p-3 bg-emerald-600 text-white text-xs font-semibold rounded-2xl flex items-center justify-between shadow-md animate-pulse">
               <div className="flex items-center gap-2">
                 <i className="fa-solid fa-sync animate-spin text-sm"></i>
@@ -414,10 +430,12 @@ export default function App() {
       </div>
 
       {/* Sticky Mobile Bottom Navigation Bar */}
-      <BottomNav
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      {activeTab !== 'landing' && (
+        <BottomNav
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+        />
+      )}
 
       {/* Official Footer */}
       <Footer />

@@ -91,6 +91,7 @@ export function AdminLoginPage({
     const params = new URLSearchParams(window.location.search);
     const authStatus = params.get('auth') as AuthStatus | null;
     const authProvider = params.get('provider');
+    const hasOauthResult = Boolean(authStatus || authProvider);
 
     if (
       authStatus &&
@@ -111,6 +112,19 @@ export function AdminLoginPage({
 
     if (authProvider === 'google' || authProvider === 'line') {
       setProvider(authProvider);
+    }
+
+    // OAuth result parameters are a one-time message. Leaving them in the URL
+    // makes a resolved error reappear after every refresh or redeployment.
+    if (hasOauthResult) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('auth');
+      cleanUrl.searchParams.delete('provider');
+      window.history.replaceState(
+        {},
+        document.title,
+        `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`
+      );
     }
   }, []);
 
@@ -251,7 +265,7 @@ export function AdminLoginPage({
                           } mt-1 text-lg`}
                           aria-hidden="true"
                         />
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <h3 className="font-bold">
                             {STATUS_CONTENT[effectiveStatus].title}
                           </h3>
@@ -262,6 +276,17 @@ export function AdminLoginPage({
                             รหัสอ้างอิง: {referenceCode}
                           </p>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatus('default');
+                            setProvider(null);
+                          }}
+                          className="-mr-1 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-current opacity-70 transition hover:bg-black/5 hover:opacity-100"
+                          aria-label="ปิดข้อความแจ้งเตือน"
+                        >
+                          <i className="fa-solid fa-xmark" aria-hidden="true" />
+                        </button>
                       </div>
                     </div>
                   )}
