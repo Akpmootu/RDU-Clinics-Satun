@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type AuthProvider = 'google' | 'line';
 
@@ -8,6 +8,15 @@ interface AuthProviderButtonsProps {
 
 export function AuthProviderButtons({ onStart }: AuthProviderButtonsProps) {
   const [loadingProvider, setLoadingProvider] = useState<AuthProvider | null>(null);
+
+  useEffect(() => {
+    const resetLoadingState = () => setLoadingProvider(null);
+
+    // Browsers may restore this page from the back-forward cache when a user
+    // cancels at an OAuth provider. Re-enable both choices on that return.
+    window.addEventListener('pageshow', resetLoadingState);
+    return () => window.removeEventListener('pageshow', resetLoadingState);
+  }, []);
 
   const startLogin = (provider: AuthProvider) => {
     setLoadingProvider(provider);
