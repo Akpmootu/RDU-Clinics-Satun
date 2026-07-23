@@ -34,7 +34,6 @@ import {
 import {
   loadAppUsers,
   saveAppUsers,
-  loadCurrentUser,
   saveCurrentUser,
   DEFAULT_USERS,
 } from './services/userService';
@@ -46,11 +45,8 @@ export default function App() {
   const [logs, setLogs] = useState<AuditLog[]>(loadLocalLogs());
 
   // --- Role & Authentication State ---
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => loadCurrentUser());
-  const [userRole, setUserRole] = useState<'admin' | 'user'>(() => {
-    const savedUser = loadCurrentUser();
-    return savedUser && savedUser.status === 'active' ? 'admin' : 'user';
-  });
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'user'>('user');
   const [appUsers, setAppUsers] = useState<AppUser[]>(() => loadAppUsers());
 
   // --- UI Layout States ---
@@ -96,9 +92,17 @@ export default function App() {
 
   // Check backend session via /api/auth/me & handle OAuth callback redirect parameter
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const authStatus = urlParams.get('auth');
+
+    fetch('/api/auth/me', { credentials: 'same-origin' })
+      .then(async (res) => {
         if (res.ok) return res.json();
+        if (res.status === 401) {
+          setCurrentUser(null);
+          setUserRole('user');
+          saveCurrentUser(null);
+        }
         return null;
       })
       .then((data) => {
@@ -109,19 +113,30 @@ export default function App() {
             emailOrId: data.user.emailOrId,
             provider: data.user.provider,
             role: data.user.role,
-            status: 'active',
+            status: data.user.status,
             createdAt: new Date().toISOString(),
           };
           setCurrentUser(authUser);
-          setUserRole('admin');
           saveCurrentUser(authUser);
+
+          const hasAdminAccess =
+            authUser.status === 'active' &&
+            (authUser.role === 'admin' || authUser.role === 'super_admin');
+          setUserRole(hasAdminAccess ? 'admin' : 'user');
+
+          if (hasAdminAccess && authStatus === 'success') {
+            setActiveTab('dashboard');
+            window.history.replaceState({}, document.title, '/');
+          }
+        } else if (data?.status === 'unauthenticated') {
+          setCurrentUser(null);
+          setUserRole('user');
+          saveCurrentUser(null);
         }
       })
       .catch(() => {});
 
     // Check URL search query for OAuth signals & admin routes
-    const urlParams = new URLSearchParams(window.location.search);
-    const authStatus = urlParams.get('auth');
     if (window.location.pathname.startsWith('/admin') || (authStatus && authStatus !== 'success')) {
       setActiveTab('admin-login');
     }
@@ -170,14 +185,16 @@ export default function App() {
     setIsUpdateModalOpen(true);
   };
 
-  const handleAdminLoginSuccess = (user: AppUser) => {
-    setCurrentUser(user);
-    setUserRole('admin');
-    saveCurrentUser(user);
-    setIsAdminLoginModalOpen(false);
-  };
+  const handleLogoutAdmin = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch {
+      // Clear the local display state even when the network is unavailable.
+    }
 
-  const handleLogoutAdmin = () => {
     setCurrentUser(null);
     setUserRole('user');
     saveCurrentUser(null);
@@ -238,6 +255,19 @@ export default function App() {
     setLogs(INITIAL_AUDIT_LOGS);
     saveLocalLogs(INITIAL_AUDIT_LOGS);
   };
+
+  if (activeTab === 'admin-login') {
+    return (
+      <AdminLoginPage
+        currentUser={currentUser}
+        onLogout={handleLogoutAdmin}
+        onGoBackHome={() => {
+          window.history.replaceState({}, document.title, '/');
+          setActiveTab('landing');
+        }}
+      />
+    );
+  }
 
   return (
     <div className={`min-h-screen bg-slate-50 text-slate-800 font-['Kanit',sans-serif] flex flex-col ${
@@ -380,21 +410,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab 6: Admin Login Page (Dedicated Route View) */}
-          {activeTab === 'admin-login' && (
-            <div className="animate-fadeIn">
-              <AdminLoginPage
-                currentUser={currentUser}
-                onLoginSuccess={(user) => {
-                  handleAdminLoginSuccess(user);
-                  setActiveTab('dashboard');
-                }}
-                onLogout={handleLogoutAdmin}
-                onGoBackHome={() => setActiveTab('landing')}
-              />
-            </div>
-          )}
-
         </main>
       </div>
 
@@ -411,7 +426,6 @@ export default function App() {
       <AdminLoginModal
         isOpen={isAdminLoginModalOpen}
         onClose={() => setIsAdminLoginModalOpen(false)}
-        onLoginSuccess={handleAdminLoginSuccess}
       />
 
       {/* User Management Modal (Super Admin) */}
