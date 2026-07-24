@@ -1,6 +1,1 @@
-{
-  "name": "ระบบติดตาม RDU คลินิกเอกชน สตูล - RDU Clinics Satun",
-  "description": "ระบบติดตามและประเมินการใช้ยาอย่างสมเหตุผล (RDU) ในคลินิกเอกชน จังหวัดสตูล",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
+{"name":"RDU-Clinics-Satun","description":"ระบบติดตามและประเมินการใช้ยาอย่างสมเหตุผล (RDU) ในคลินิกเอกชน จังหวัดสตูล","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}

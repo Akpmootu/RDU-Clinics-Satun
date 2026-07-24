@@ -1,32 +1,8 @@
 @import "tailwindcss";
 
 @layer base {
-  html {
-    scroll-behavior: smooth;
-    scroll-padding-top: 5rem;
-  }
-
   body {
     font-family: 'Kanit', sans-serif;
-    min-width: 320px;
-    margin: 0;
-    background: #f8fafc;
-    color: #1e293b;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  button,
-  a,
-  input,
-  select,
-  textarea {
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  :focus-visible {
-    outline: 3px solid #10b981;
-    outline-offset: 3px;
   }
 }
 
@@ -61,21 +37,6 @@
 
 .glow-amber {
   box-shadow: 0 0 15px rgba(245, 158, 11, 0.25);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
 }
 
 /* Custom scrollbars */

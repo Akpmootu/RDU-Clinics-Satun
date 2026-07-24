@@ -89,12 +89,6 @@ export interface AppUser {
   id: string;
   emailOrId: string;
   name: string;
-  firstName?: string;
-  lastName?: string;
-  position?: string; // ตำแหน่ง
-  workGroup?: string; // กลุ่มงาน
-  affiliation?: string; // สังกัด
-  phone?: string; // เบอร์โทรศัพท์
   provider: AuthProvider;
   role: UserRole;
   status: UserStatus;
@@ -103,16 +97,5 @@ export interface AppUser {
   approvedAt?: string;
   avatarUrl?: string;
   lastLoginAt?: string;
-}
-
-export interface OfficerRegistrationData {
-  firstName: string;
-  lastName: string;
-  position: string;
-  workGroup: string;
-  affiliation: string;
-  phone: string;
-  emailOrId: string;
-  provider: AuthProvider;
 }
 

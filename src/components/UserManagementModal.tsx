@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Swal from 'sweetalert2';
 import { AppUser, UserRole } from '../types';
-import { SUPER_ADMIN_EMAIL, maskIdentifier, loadAppUsers, fetchServerUsers, updateUserStatusServer, resetServerUsers } from '../services/userService';
-import { sendOfficerApprovalTelegramNotification, loadSettings } from '../services/api';
+import { SUPER_ADMIN_EMAIL, maskIdentifier } from '../services/userService';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -22,17 +21,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   onResetUsers,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active' | 'blocked'>('all');
   const [newEmailOrId, setNewEmailOrId] = useState('');
   const [newName, setNewName] = useState('');
   const [newProvider, setNewProvider] = useState<'google' | 'line'>('google');
   const [newRole, setNewRole] = useState<UserRole>('admin');
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchServerUsers().then(onUpdateUsers);
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -40,56 +32,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     currentUser?.role === 'super_admin' ||
     currentUser?.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
-  const pendingUsers = users.filter((u) => u.status === 'pending');
-  const pendingUsersCount = pendingUsers.length;
-  const activeUsersCount = users.filter((u) => u.status === 'active').length;
-  const blockedUsersCount = users.filter((u) => u.status === 'blocked').length;
-
-  const handleApproveUser = async (user: AppUser) => {
-    const updated = await updateUserStatusServer(user.id, user.emailOrId, 'active');
-    onUpdateUsers(updated);
-    sendOfficerApprovalTelegramNotification(user, currentUser?.name || 'Super Admin', loadSettings()).catch(() => {});
-    
-    Swal.fire({
-      icon: 'success',
-      title: 'ยืนยันรับ / อนุมัติสิทธิ์สำเร็จ! 🎉',
-      text: `ยืนยันรับและเปิดสิทธิ์ใช้งานระบบให้แก่ ${user.name} เรียบร้อยแล้ว`,
-      confirmButtonColor: '#059669',
-    });
-  };
-
-  const handleApproveAllPending = () => {
-    if (pendingUsersCount === 0) return;
-
-    Swal.fire({
-      title: `ยืนยันรับเจ้าหน้าที่ทั้งหมด?`,
-      text: `คุณต้องการอนุมัติสิทธิ์ให้แก่เจ้าหน้าที่ที่ขอลงทะเบียนทั้ง ${pendingUsersCount} ท่าน ใช่หรือไม่?`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#059669',
-      cancelButtonColor: '#64748b',
-      confirmButtonText: `ใช่, ยืนยันรับทั้งหมด (${pendingUsersCount})`,
-      cancelButtonText: 'ยกเลิก',
-    }).then(async (res) => {
-      if (res.isConfirmed) {
-        let latestList = users;
-        for (const u of pendingUsers) {
-          latestList = await updateUserStatusServer(u.id, u.emailOrId, 'active');
-          sendOfficerApprovalTelegramNotification(u, currentUser?.name || 'Super Admin', loadSettings()).catch(() => {});
-        }
-        onUpdateUsers(latestList);
-
-        Swal.fire({
-          icon: 'success',
-          title: 'ยืนยันรับเจ้าหน้าที่ทั้งหมดเรียบร้อยแล้ว! 🎉',
-          text: `อนุมัติสิทธิ์ใช้งานเรียบร้อยจำนวน ${pendingUsersCount} ท่าน`,
-          confirmButtonColor: '#059669',
-        });
-      }
-    });
-  };
-
-  const handleAddUser = async (e: React.FormEvent) => {
+  const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!newEmailOrId.trim()) {
@@ -128,7 +71,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
     };
 
-    const updated = await updateUserStatusServer(newUser.id, newUser.emailOrId, 'active', newUser.role);
+    const updated = [newUser, ...users];
     onUpdateUsers(updated);
 
     setNewEmailOrId('');
@@ -142,7 +85,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     });
   };
 
-  const handleToggleStatus = async (user: AppUser) => {
+  const handleToggleStatus = (user: AppUser) => {
     if (user.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
       Swal.fire({
         icon: 'error',
@@ -154,7 +97,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
 
     const newStatus = user.status === 'active' ? 'blocked' : 'active';
-    const updated = await updateUserStatusServer(user.id, user.emailOrId, newStatus);
+    const updated = users.map((u) => (u.id === user.id ? { ...u, status: newStatus as 'active' | 'blocked' } : u));
     onUpdateUsers(updated);
 
     Swal.fire({
@@ -165,7 +108,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     });
   };
 
-  const handleToggleRole = async (user: AppUser) => {
+  const handleToggleRole = (user: AppUser) => {
     if (user.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
       Swal.fire({
         icon: 'error',
@@ -176,7 +119,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
 
     const nextRole: UserRole = user.role === 'super_admin' ? 'admin' : 'super_admin';
-    const updated = await updateUserStatusServer(user.id, user.emailOrId, user.status, nextRole);
+    const updated = users.map((u) => (u.id === user.id ? { ...u, role: nextRole } : u));
     onUpdateUsers(updated);
 
     Swal.fire({
@@ -219,22 +162,15 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     });
   };
 
-  const filteredUsers = users.filter((u) => {
-    const matchesSearch =
+  const filteredUsers = users.filter(
+    (u) =>
       u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.emailOrId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (u.position && u.position.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (u.affiliation && u.affiliation.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    if (statusFilter === 'pending') return matchesSearch && u.status === 'pending';
-    if (statusFilter === 'active') return matchesSearch && u.status === 'active';
-    if (statusFilter === 'blocked') return matchesSearch && u.status === 'blocked';
-    return matchesSearch;
-  });
+      u.emailOrId.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
@@ -266,40 +202,13 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
+        <div className="p-5 sm:p-6 space-y-6 overflow-y-auto flex-1">
           
           {/* Notice for non-super admin view */}
           {!isSuperAdmin && (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-center gap-2">
               <i className="fa-solid fa-lock text-amber-600 text-base"></i>
               <span>เฉพาะ <b>Super Admin ({maskIdentifier(SUPER_ADMIN_EMAIL)})</b> เท่านั้นที่สามารถแก้ไขสิทธิ์ผู้ใช้งานได้</span>
-            </div>
-          )}
-
-          {/* Pending Officer Registration Highlight Banner */}
-          {isSuperAdmin && pendingUsersCount > 0 && (
-            <div className="p-4 bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 text-white rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md border border-amber-400">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0">
-                  <i className="fa-solid fa-user-clock text-white animate-pulse"></i>
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
-                    <span>มีเจ้าหน้าที่ขอลงทะเบียนเข้าใช้งาน {pendingUsersCount} ท่าน รอการยืนยัน</span>
-                  </h4>
-                  <p className="text-xs text-amber-100 mt-0.5">
-                    กรุณาตรวจสอบข้อมูลประจำตัว ตำแหน่ง สังกัด และกดปุ่ม "ยืนยันรับ / อนุมัติสิทธิ์"
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleApproveAllPending}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-white text-amber-950 hover:bg-amber-50 text-xs font-black transition shrink-0 shadow-sm flex items-center justify-center gap-1.5"
-              >
-                <i className="fa-solid fa-check-double text-emerald-600"></i>
-                <span>ยืนยันรับทั้งหมด ({pendingUsersCount})</span>
-              </button>
             </div>
           )}
 
@@ -380,84 +289,28 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             </div>
           )}
 
-          {/* Filter Tabs & Search Bar */}
-          <div className="space-y-3 pt-1">
-            {/* Filter Tabs */}
-            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-2xl text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setStatusFilter('all')}
-                className={`px-3 py-1.5 rounded-xl transition ${
-                  statusFilter === 'all'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                ทั้งหมด ({users.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('pending')}
-                className={`px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
-                  statusFilter === 'pending'
-                    ? 'bg-white text-amber-900 shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>รออนุมัติรับ</span>
-                {pendingUsersCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-white animate-pulse">
-                    {pendingUsersCount}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('active')}
-                className={`px-3 py-1.5 rounded-xl transition ${
-                  statusFilter === 'active'
-                    ? 'bg-white text-emerald-800 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                อนุมัติแล้ว ({activeUsersCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('blocked')}
-                className={`px-3 py-1.5 rounded-xl transition ${
-                  statusFilter === 'blocked'
-                    ? 'bg-white text-rose-800 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                ระงับสิทธิ์ ({blockedUsersCount})
-              </button>
+          {/* Search & Filter Bar */}
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="relative flex-1 max-w-sm">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="ค้นหาชื่อผู้ใช้, อีเมล, LINE ID..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-emerald-500"
+              />
             </div>
-
-            {/* Search Input & Reset Button */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-md">
-                <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหาชื่อเจ้าหน้าที่, ตำแหน่ง, สังกัด, อีเมล, LINE ID..."
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-emerald-500"
-                />
-              </div>
-              {isSuperAdmin && (
-                <button
-                  type="button"
-                  onClick={onResetUsers}
-                  className="text-xs text-slate-500 hover:text-slate-800 underline font-medium flex items-center gap-1"
-                >
-                  <i className="fa-solid fa-rotate-left"></i>
-                  <span>คืนค่าเริ่มต้น</span>
-                </button>
-              )}
-            </div>
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={onResetUsers}
+                className="text-xs text-slate-500 hover:text-slate-800 underline font-medium flex items-center gap-1"
+              >
+                <i className="fa-solid fa-rotate-left"></i>
+                <span>คืนค่าเริ่มต้น</span>
+              </button>
+            )}
           </div>
 
           {/* Users Table */}
@@ -466,8 +319,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase">
-                    <th className="py-3 px-4">ผู้ใช้งาน / ข้อมูลเจ้าหน้าที่</th>
-                    <th className="py-3 px-3">ช่องทาง SIGN-IN</th>
+                    <th className="py-3 px-4">ผู้ใช้งาน</th>
+                    <th className="py-3 px-3">ช่องทาง Sign-In</th>
                     <th className="py-3 px-3">ระดับสิทธิ์</th>
                     <th className="py-3 px-3">สถานะ</th>
                     {isSuperAdmin && <th className="py-3 px-4 text-center">จัดการ</th>}
@@ -477,7 +330,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   {filteredUsers.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-slate-400">
-                        ไม่พบผู้ใช้งานตรงตามคำค้นหาหรือแท็บที่เลือก
+                        ไม่พบผู้ใช้งานตรงตามคำค้นหา
                       </td>
                     </tr>
                   ) : (
@@ -485,10 +338,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                       const isMainSuper = u.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
                       return (
-                        <tr key={u.id} className={`transition ${u.status === 'pending' ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50/80'}`}>
+                        <tr key={u.id} className="hover:bg-slate-50/80 transition">
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2.5">
-                              <div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs border border-slate-200">
+                              <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-600 text-xs border border-slate-200">
                                 {u.avatarUrl ? (
                                   <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
                                 ) : (
@@ -503,22 +356,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                                       Owner
                                     </span>
                                   )}
-                                  {u.status === 'pending' && (
-                                    <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-500 text-white animate-pulse">
-                                      NEW
-                                    </span>
-                                  )}
                                 </div>
                                 <div className="text-[11px] text-slate-500 font-mono">{maskIdentifier(u.emailOrId)}</div>
-                                {(u.position || u.affiliation || u.phone) && (
-                                  <div className="mt-1 text-[10px] text-slate-600 space-y-0.5">
-                                    {u.position && <div className="font-bold text-emerald-700">{u.position}</div>}
-                                    {(u.workGroup || u.affiliation) && (
-                                      <div>{u.workGroup ? `${u.workGroup} • ` : ''}{u.affiliation}</div>
-                                    )}
-                                    {u.phone && <div><i className="fa-solid fa-phone text-[9px] text-slate-400 mr-1"></i>{u.phone}</div>}
-                                  </div>
-                                )}
                               </div>
                             </div>
                           </td>
@@ -556,34 +395,19 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                               className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                 u.status === 'active'
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : u.status === 'pending'
-                                  ? 'bg-amber-100 text-amber-900 border border-amber-300 font-black'
                                   : 'bg-rose-50 text-rose-700 border border-rose-200'
                               }`}
                             >
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                u.status === 'active' ? 'bg-emerald-500' : u.status === 'pending' ? 'bg-amber-500 animate-ping' : 'bg-rose-500'
-                              }`}></span>
-                              <span>{u.status === 'active' ? 'อนุมัติแล้ว' : u.status === 'pending' ? 'รออนุมัติรับ' : 'ระงับสิทธิ์'}</span>
+                              <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                              <span>{u.status === 'active' ? 'อนุมัติแล้ว' : 'ระงับสิทธิ์'}</span>
                             </span>
                           </td>
 
                           {isSuperAdmin && (
                             <td className="py-3 px-4 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
+                              <div className="flex items-center justify-center gap-1">
                                 {!isMainSuper ? (
                                   <>
-                                    {u.status === 'pending' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleApproveUser(u)}
-                                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs transition flex items-center gap-1 shrink-0 ring-2 ring-emerald-300"
-                                        title="กดยืนยันรับและอนุมัติสิทธิ์เจ้าหน้าที่เข้าใช้งาน"
-                                      >
-                                        <i className="fa-solid fa-user-check text-xs"></i>
-                                        <span>ยืนยันรับ / อนุมัติ</span>
-                                      </button>
-                                    )}
                                     <button
                                       type="button"
                                       onClick={() => handleToggleRole(u)}
