@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { DistrictSummary, Clinic } from '../types';
+import { ProgressScale } from './ProgressScale';
 
 interface DistrictDetailModalProps {
   isOpen: boolean;
@@ -45,22 +46,22 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
       <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
         
         {/* Modal Header */}
-        <div className="p-5 sm:p-6 bg-gradient-to-r from-emerald-700 via-teal-700 to-slate-800 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-emerald-200 font-bold text-lg shadow-inner">
+        <div className="p-5 sm:p-6 bg-gradient-to-r from-emerald-700 via-teal-700 to-slate-800 text-white flex items-start justify-between gap-3 shrink-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-emerald-200 font-bold text-lg shadow-inner">
               <i className="fa-solid fa-map-location-dot"></i>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg sm:text-xl font-extrabold text-white">
+            <div className="min-w-0">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+                <h3 className="text-base sm:text-xl font-extrabold leading-snug text-white">
                   ข้อมูลการประเมิน RDU - อำเภอ{summary.district}
                 </h3>
                 {summary.isTargetAchieved ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-400 text-slate-900">
-                    ผ่านเกณฑ์ 25%
+                  <span className="shrink-0 whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-400 text-slate-900">
+                    ผ่านเกณฑ์ {summary.targetPercentage}%
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-400 text-slate-900">
+                  <span className="shrink-0 whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-400 text-slate-900">
                     กำลังประเมิน
                   </span>
                 )}
@@ -73,7 +74,7 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
 
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition focus:outline-none"
+            className="w-9 h-9 shrink-0 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition focus:outline-none"
             aria-label="ปิดหน้าต่าง"
           >
             <i className="fa-solid fa-xmark text-lg"></i>
@@ -114,25 +115,39 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Progress Bar */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-              <span className="flex items-center gap-1.5">
-                <i className="fa-solid fa-bullseye text-emerald-600"></i>
-                <span>ความก้าวหน้าการประเมิน RDU อำเภอ{summary.district} (เป้าหมาย ≥ 25.0%)</span>
-              </span>
-              <span className={summary.isTargetAchieved ? 'text-emerald-700' : 'text-amber-600'}>
-                {summary.passPercentage}% / 25.0%
-              </span>
+          {/* Progress Scale */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+              <div>
+                <p className="text-sm font-bold text-slate-800">
+                  ความก้าวหน้าการผ่านเกณฑ์ RDU
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  แสดงสัดส่วนจริงจาก 0–100% พร้อมตำแหน่งเกณฑ์ที่ต้องผ่าน
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                <span className="rounded-full bg-white px-3 py-1.5 text-slate-600 ring-1 ring-slate-200">
+                  ผ่านแล้ว {summary.passedCount}/{summary.totalClinics} แห่ง
+                </span>
+                <span
+                  className={`rounded-full px-3 py-1.5 ${
+                    summary.isTargetAchieved
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {summary.isTargetAchieved ? 'ผ่านเกณฑ์แล้ว' : 'กำลังดำเนินการ'}
+                </span>
+              </div>
             </div>
-            <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden p-0.5">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  summary.isTargetAchieved ? 'bg-emerald-600' : 'bg-amber-500'
-                }`}
-                style={{ width: `${Math.min((summary.passPercentage / 25) * 100, 100)}%` }}
-              ></div>
-            </div>
+
+            <ProgressScale
+              value={summary.passPercentage}
+              target={summary.targetPercentage}
+              achieved={summary.isTargetAchieved}
+              ariaLabel={`ความก้าวหน้าการผ่านเกณฑ์ RDU อำเภอ${summary.district}`}
+            />
           </div>
 
           {/* Filter & Search Toolbar */}
