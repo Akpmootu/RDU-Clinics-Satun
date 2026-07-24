@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { AppUser, UserRole } from '../types';
-import { SUPER_ADMIN_EMAIL, maskIdentifier, loadAppUsers } from '../services/userService';
+import { SUPER_ADMIN_EMAIL, maskIdentifier, loadAppUsers, fetchServerUsers, updateUserStatusServer, resetServerUsers } from '../services/userService';
 import { sendOfficerApprovalTelegramNotification, loadSettings } from '../services/api';
 
 interface UserManagementModalProps {
@@ -30,7 +30,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      onUpdateUsers(loadAppUsers());
+      fetchServerUsers().then(onUpdateUsers);
     }
   }, [isOpen]);
 
@@ -45,10 +45,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const activeUsersCount = users.filter((u) => u.status === 'active').length;
   const blockedUsersCount = users.filter((u) => u.status === 'blocked').length;
 
-  const handleApproveUser = (user: AppUser) => {
-    const updated = users.map((item) =>
-      item.id === user.id ? { ...item, status: 'active' as const } : item
-    );
+  const handleApproveUser = async (user: AppUser) => {
+    const updated = await updateUserStatusServer(user.id, user.emailOrId, 'active');
     onUpdateUsers(updated);
     sendOfficerApprovalTelegramNotification(user, currentUser?.name || 'Super Admin', loadSettings()).catch(() => {});
     
@@ -72,17 +70,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       cancelButtonColor: '#64748b',
       confirmButtonText: `ใช่, ยืนยันรับทั้งหมด (${pendingUsersCount})`,
       cancelButtonText: 'ยกเลิก',
-    }).then((res) => {
+    }).then(async (res) => {
       if (res.isConfirmed) {
-        const updated = users.map((item) =>
-          item.status === 'pending' ? { ...item, status: 'active' as const } : item
-        );
-        onUpdateUsers(updated);
-
-        // Notify Telegram for all approved users
-        pendingUsers.forEach((u) => {
+        let latestList = users;
+        for (const u of pendingUsers) {
+          latestList = await updateUserStatusServer(u.id, u.emailOrId, 'active');
           sendOfficerApprovalTelegramNotification(u, currentUser?.name || 'Super Admin', loadSettings()).catch(() => {});
-        });
+        }
+        onUpdateUsers(latestList);
 
         Swal.fire({
           icon: 'success',
@@ -94,7 +89,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     });
   };
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!newEmailOrId.trim()) {
@@ -133,7 +128,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
     };
 
-    const updated = [newUser, ...users];
+    const updated = await updateUserStatusServer(newUser.id, newUser.emailOrId, 'active', newUser.role);
     onUpdateUsers(updated);
 
     setNewEmailOrId('');
@@ -147,7 +142,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     });
   };
 
-  const handleToggleStatus = (user: AppUser) => {
+  const handleToggleStatus = async (user: AppUser) => {
     if (user.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
       Swal.fire({
         icon: 'error',
@@ -159,7 +154,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
 
     const newStatus = user.status === 'active' ? 'blocked' : 'active';
-    const updated = users.map((u) => (u.id === user.id ? { ...u, status: newStatus as 'active' | 'blocked' } : u));
+    const updated = await updateUserStatusServer(user.id, user.emailOrId, newStatus);
     onUpdateUsers(updated);
 
     Swal.fire({
@@ -170,7 +165,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     });
   };
 
-  const handleToggleRole = (user: AppUser) => {
+  const handleToggleRole = async (user: AppUser) => {
     if (user.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
       Swal.fire({
         icon: 'error',
@@ -181,7 +176,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
 
     const nextRole: UserRole = user.role === 'super_admin' ? 'admin' : 'super_admin';
-    const updated = users.map((u) => (u.id === user.id ? { ...u, role: nextRole } : u));
+    const updated = await updateUserStatusServer(user.id, user.emailOrId, user.status, nextRole);
     onUpdateUsers(updated);
 
     Swal.fire({

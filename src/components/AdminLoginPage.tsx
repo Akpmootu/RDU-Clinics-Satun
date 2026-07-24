@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, FormEvent } from 'react';
 import Swal from 'sweetalert2';
 import { AppUser } from '../types';
 import { AuthProviderButtons } from './AuthProviderButtons';
-import { registerOfficer } from '../services/userService';
+import { registerOfficerServer } from '../services/userService';
 import { sendOfficerRegistrationTelegramNotification, loadSettings } from '../services/api';
 
 interface AdminLoginPageProps {
@@ -169,7 +169,7 @@ export function AdminLoginPage({
     window.setTimeout(() => setCopied(false), 1800);
   };
 
-  const handleRegisterSubmit = (e: FormEvent) => {
+  const handleRegisterSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
@@ -184,7 +184,7 @@ export function AdminLoginPage({
       return;
     }
 
-    const res = registerOfficer({
+    const res = await registerOfficerServer({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       position: position.trim(),

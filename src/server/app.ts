@@ -266,18 +266,161 @@ function findLineAdmin(userId: string, displayName: string): AdminRecord | null 
   return null;
 }
 
-function pendingRecord(
+export interface ServerAppUser {
+  id: string;
+  emailOrId: string;
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  position?: string;
+  workGroup?: string;
+  affiliation?: string;
+  phone?: string;
+  provider: 'google' | 'line';
+  role: 'super_admin' | 'admin' | 'viewer' | 'user';
+  status: 'pending' | 'active' | 'suspended' | 'blocked';
+  createdAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  avatarUrl?: string;
+}
+
+const DEFAULT_SERVER_USERS: ServerAppUser[] = [
+  {
+    id: 'usr_super_admin',
+    emailOrId: 'akaporn1234@gmail.com',
+    name: 'เอกภรณ์ สุวรรณฉวี',
+    firstName: 'เอกภรณ์',
+    lastName: 'สุวรรณฉวี',
+    position: 'ภก.ชำนาญการพิเศษ (Super Admin)',
+    workGroup: 'กลุ่มงานเภสัชกรรมและคุ้มครองผู้บริโภค',
+    affiliation: 'สำนักงานสาธารณสุขจังหวัดสตูล',
+    phone: '081-234-5678',
+    provider: 'google',
+    role: 'super_admin',
+    status: 'active',
+    createdAt: '2569-01-01 09:00',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'usr_admin_1',
+    emailOrId: 'satun.rdu.admin@gmail.com',
+    name: 'เจ้าหน้าที่ สสจ.สตูล',
+    firstName: 'เจ้าหน้าที่',
+    lastName: 'สสจ.สตูล',
+    position: 'นักวิชาการสาธารณสุข',
+    workGroup: 'กลุ่มงานพัฒนายุทธศาสตร์สาธารณสุข',
+    affiliation: 'สำนักงานสาธารณสุขจังหวัดสตูล',
+    phone: '074-711-071',
+    provider: 'google',
+    role: 'admin',
+    status: 'active',
+    createdAt: '2569-01-02 10:30',
+    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'usr_line_admin',
+    emailOrId: 'satun_rdu_line',
+    name: 'LINE Admin Satun',
+    firstName: 'เจ้าหน้าที่',
+    lastName: 'LINE Admin',
+    position: 'เจ้าพนักงานสาธารณสุข',
+    workGroup: 'กลุ่มงานควบคุมโรคติดต่อ',
+    affiliation: 'สำนักงานสาธารณสุขอำเภอเมืองสตูล',
+    phone: '074-721-123',
+    provider: 'line',
+    role: 'admin',
+    status: 'active',
+    createdAt: '2569-01-05 14:15',
+    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+  }
+];
+
+const globalServerUsers: ServerAppUser[] = [...DEFAULT_SERVER_USERS];
+
+async function sendServerTelegramNotification(text: string) {
+  const botToken = process.env.VITE_TELEGRAM_BOT_TOKEN || '8642457774:AAEssByKIIelsFpDnkz9ridr-IT--J2Ap9I';
+  const chatId = process.env.VITE_TELEGRAM_CHAT_ID || '-5319646324';
+
+  if (!botToken || !chatId) return;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+      }),
+    });
+  } catch (err) {
+    console.warn('Server Telegram notification failed:', err);
+  }
+}
+
+function registerOrFindOAuthUser(
   provider: AuthProvider,
   identifier: string,
   displayName: string
 ): AdminRecord {
-  return {
-    id: `pending_${provider}_${identifier}`,
-    emailOrId: identifier,
+  const cleanId = identifier.trim().toLowerCase();
+
+  const envAdmin = provider === 'google' ? findGoogleAdmin(cleanId, displayName) : findLineAdmin(cleanId, displayName);
+  if (envAdmin) return envAdmin;
+
+  const existing = globalServerUsers.find(
+    (u) => u.emailOrId.toLowerCase() === cleanId && u.provider === provider
+  );
+
+  if (existing) {
+    return {
+      id: existing.id,
+      emailOrId: existing.emailOrId,
+      provider: existing.provider,
+      role: existing.role as AdminRole,
+      status: existing.status as AdminStatus,
+      name: existing.name,
+    };
+  }
+
+  const newPendingUser: ServerAppUser = {
+    id: `usr_${provider}_${Date.now()}`,
+    emailOrId: identifier.trim(),
+    name: displayName || (provider === 'line' ? `LINE User (${identifier.slice(0, 8)}...)` : identifier),
+    position: `เจ้าหน้าที่ (ผ่าน ${provider.toUpperCase()})`,
+    workGroup: 'รอระบุกลุ่มงาน',
+    affiliation: 'รอระบุสังกัด',
+    phone: '-',
     provider,
-    role: 'viewer',
+    role: 'admin',
     status: 'pending',
-    name: displayName || 'ผู้ขอใช้งาน',
+    createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    avatarUrl:
+      provider === 'google'
+        ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'
+        : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+  };
+
+  globalServerUsers.unshift(newPendingUser);
+
+  const nowStr = new Date().toLocaleString('th-TH');
+  sendServerTelegramNotification(
+    `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
+    `👤 *ชื่อ-นามสกุล:* ${newPendingUser.name}\n` +
+    `💼 *ตำแหน่ง:* ${newPendingUser.position}\n` +
+    `📧 *บัญชีใช้งาน:* ${newPendingUser.emailOrId} (${provider.toUpperCase()})\n` +
+    `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
+    `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`
+  ).catch(() => {});
+
+  return {
+    id: newPendingUser.id,
+    emailOrId: newPendingUser.emailOrId,
+    provider: newPendingUser.provider,
+    role: newPendingUser.role as AdminRole,
+    status: newPendingUser.status as AdminStatus,
+    name: newPendingUser.name,
   };
 }
 
@@ -391,9 +534,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
       throw new Error('google_verified_email_missing');
     }
 
-    const record =
-      findGoogleAdmin(email, user.name || email) ||
-      pendingRecord('google', email, user.name || email);
+    const record = registerOrFindOAuthUser('google', email, user.name || email);
     issueSession(res, record);
 
     return redirectToLogin(
@@ -478,9 +619,7 @@ app.get('/api/auth/line/callback', async (req, res) => {
       throw new Error('line_user_id_missing');
     }
 
-    const record =
-      findLineAdmin(userId, user.name || 'LINE User') ||
-      pendingRecord('line', userId, user.name || 'LINE User');
+    const record = registerOrFindOAuthUser('line', userId, user.name || 'LINE User');
     issueSession(res, record);
 
     return redirectToLogin(
@@ -494,6 +633,110 @@ app.get('/api/auth/line/callback', async (req, res) => {
   }
 });
 
+app.get('/api/users', (_req, res) => {
+  res.json({
+    status: 'success',
+    users: globalServerUsers,
+  });
+});
+
+app.post('/api/users/register', (req, res) => {
+  const { firstName, lastName, position, workGroup, affiliation, phone, emailOrId, provider } = req.body || {};
+
+  if (!emailOrId || !provider) {
+    return res.status(400).json({ status: 'error', message: 'กรุณาระบุข้อมูลให้ครบถ้วน' });
+  }
+
+  const cleanId = String(emailOrId).trim().toLowerCase();
+  const existing = globalServerUsers.find((u) => u.emailOrId.toLowerCase() === cleanId && u.provider === provider);
+
+  if (existing) {
+    return res.json({ status: 'success', user: existing, message: 'บัญชีนี้ถูกบันทึกไว้ในระบบแล้ว' });
+  }
+
+  const fullName = `${String(firstName || '').trim()} ${String(lastName || '').trim()}`.trim() || cleanId;
+  const newUser: ServerAppUser = {
+    id: `usr_reg_${Date.now()}`,
+    emailOrId: String(emailOrId).trim(),
+    name: fullName,
+    firstName: String(firstName || '').trim(),
+    lastName: String(lastName || '').trim(),
+    position: String(position || '').trim() || 'เจ้าหน้าที่',
+    workGroup: String(workGroup || '').trim() || 'กลุ่มงาน',
+    affiliation: String(affiliation || '').trim() || 'สังกัด',
+    phone: String(phone || '').trim() || '-',
+    provider: provider === 'line' ? 'line' : 'google',
+    role: 'admin',
+    status: 'pending',
+    createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    avatarUrl:
+      provider === 'google'
+        ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'
+        : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+  };
+
+  globalServerUsers.unshift(newUser);
+
+  const nowStr = new Date().toLocaleString('th-TH');
+  sendServerTelegramNotification(
+    `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
+    `👤 *ชื่อ-นามสกุล:* ${newUser.name}\n` +
+    `💼 *ตำแหน่ง:* ${newUser.position}\n` +
+    `🏢 *กลุ่มงาน:* ${newUser.workGroup}\n` +
+    `🏥 *สังกัด:* ${newUser.affiliation}\n` +
+    `📞 *เบอร์โทร:* ${newUser.phone}\n` +
+    `📧 *บัญชีใช้งาน:* ${newUser.emailOrId} (${newUser.provider.toUpperCase()})\n` +
+    `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
+    `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`
+  ).catch(() => {});
+
+  return res.json({
+    status: 'success',
+    user: newUser,
+    message: 'ลงทะเบียนเจ้าหน้าที่สำเร็จ',
+  });
+});
+
+app.post('/api/users/approve', (req, res) => {
+  const { userId, emailOrId, status, role } = req.body || {};
+
+  const target = globalServerUsers.find(
+    (u) => (userId && u.id === userId) || (emailOrId && u.emailOrId.toLowerCase() === String(emailOrId).toLowerCase())
+  );
+
+  if (!target) {
+    return res.status(404).json({ status: 'error', message: 'ไม่พบผู้ใช้งานในระบบ' });
+  }
+
+  if (status) target.status = status;
+  if (role) target.role = role;
+
+  if (status === 'active') {
+    const nowStr = new Date().toLocaleString('th-TH');
+    sendServerTelegramNotification(
+      `✅ *[แจ้งเตือนการยืนยันรับ / อนุมัติสิทธิ์เจ้าหน้าที่]*\n\n` +
+      `👤 *ชื่อ-นามสกุล:* ${target.name}\n` +
+      `💼 *ตำแหน่ง:* ${target.position || '-'}\n` +
+      `🏥 *สังกัด:* ${target.affiliation || target.workGroup || '-'}\n` +
+      `📧 *บัญชีใช้งาน:* ${target.emailOrId}\n` +
+      `🟢 *สถานะใหม่:* อนุมัติสิทธิ์เข้าใช้งานแล้ว (Active)\n\n` +
+      `🗓️ *เวลาอนุมัติ:* ${nowStr} น.`
+    ).catch(() => {});
+  }
+
+  return res.json({
+    status: 'success',
+    users: globalServerUsers,
+    user: target,
+  });
+});
+
+app.post('/api/users/reset', (_req, res) => {
+  globalServerUsers.length = 0;
+  globalServerUsers.push(...DEFAULT_SERVER_USERS);
+  return res.json({ status: 'success', users: globalServerUsers });
+});
+
 app.get('/api/auth/me', (req, res) => {
   const user = readSession(req);
   if (!user) {
@@ -503,10 +746,17 @@ app.get('/api/auth/me', (req, res) => {
     });
   }
 
+  const cleanId = user.emailOrId.toLowerCase();
+  const serverUser = globalServerUsers.find((u) => u.emailOrId.toLowerCase() === cleanId);
+  const effectiveStatus = serverUser ? serverUser.status : user.status;
+  const effectiveRole = serverUser ? serverUser.role : user.role;
+
   return res.json({
     status: 'success',
     user: {
       ...user,
+      status: effectiveStatus,
+      role: effectiveRole,
       maskedIdentifier: maskIdentifier(user.emailOrId),
     },
   });

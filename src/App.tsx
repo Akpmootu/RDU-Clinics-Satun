@@ -38,6 +38,8 @@ import {
   saveAppUsers,
   saveCurrentUser,
   DEFAULT_USERS,
+  fetchServerUsers,
+  resetServerUsers,
 } from './services/userService';
 
 export default function App() {
@@ -95,6 +97,7 @@ export default function App() {
 
   // Check backend session via /api/auth/me & handle OAuth callback redirect parameter
   useEffect(() => {
+    fetchServerUsers().then(setAppUsers).catch(() => {});
     const urlParams = new URLSearchParams(window.location.search);
     const authStatus = urlParams.get('auth');
 
@@ -251,14 +254,15 @@ export default function App() {
     saveAppUsers(newUsers);
   };
 
-  const handleOpenUserManagementModal = () => {
-    setAppUsers(loadAppUsers());
+  const handleOpenUserManagementModal = async () => {
+    const serverUsers = await fetchServerUsers();
+    setAppUsers(serverUsers);
     setIsUserManagementModalOpen(true);
   };
 
-  const handleResetAppUsers = () => {
-    setAppUsers(DEFAULT_USERS);
-    saveAppUsers(DEFAULT_USERS);
+  const handleResetAppUsers = async () => {
+    const resUsers = await resetServerUsers();
+    setAppUsers(resUsers);
     Swal.fire({
       icon: 'success',
       title: 'คืนค่าเริ่มต้นผู้ใช้งานเรียบร้อยแล้ว!',

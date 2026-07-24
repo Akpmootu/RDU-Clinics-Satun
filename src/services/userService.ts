@@ -172,42 +172,104 @@ export function registerOfficer(
   };
 }
 
-export function validateLogin(
-  emailOrId: string,
-  provider: 'google' | 'line'
-): { success: boolean; user?: AppUser; message?: string } {
-  const users = loadAppUsers();
-  const cleanId = emailOrId.trim().toLowerCase();
-
-  // Special check for primary Super Admin
-  if (cleanId === SUPER_ADMIN_EMAIL.toLowerCase()) {
-    let superAdmin = users.find(
-      (u) => u.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
-    );
-    if (!superAdmin) {
-      superAdmin = DEFAULT_USERS[0];
+export async function fetchServerUsers(): Promise<AppUser[]> {
+  try {
+    const res = await fetch('/api/users');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.users)) {
+        saveAppUsers(data.users);
+        return data.users;
+      }
     }
-    return { success: true, user: superAdmin };
+  } catch (err) {
+    console.warn('Failed to fetch users from server, fallback to local storage', err);
+  }
+  return loadAppUsers();
+}
+
+export async function registerOfficerServer(
+  data: OfficerRegistrationData
+): Promise<{ success: boolean; user?: AppUser; message?: string }> {
+  // First save locally
+  const localRes = registerOfficer(data);
+
+  try {
+    const res = await fetch('/api/users/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      const serverData = await res.json();
+      if (serverData.status === 'success' && serverData.user) {
+        const users = loadAppUsers();
+        const exists = users.some((u) => u.id === serverData.user.id);
+        if (!exists) {
+          saveAppUsers([serverData.user, ...users]);
+        }
+        return {
+          success: true,
+          user: serverData.user,
+          message: serverData.message || 'ลงทะเบียนสำเร็จ! ข้อมูลถูกส่งไปยังผู้ดูแลระบบเพื่ออนุมัติสิทธิ์เรียบร้อยแล้ว',
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Server registration sync failed, using local registration:', err);
   }
 
-  const foundUser = users.find(
-    (u) => u.emailOrId.toLowerCase() === cleanId && u.provider === provider
+  return localRes;
+}
+
+export async function updateUserStatusServer(
+  userId: string,
+  emailOrId: string,
+  status: 'pending' | 'active' | 'suspended' | 'blocked',
+  role?: string
+): Promise<AppUser[]> {
+  const currentUsers = loadAppUsers();
+  const updatedUsers = currentUsers.map((u) =>
+    u.id === userId || u.emailOrId.toLowerCase() === emailOrId.toLowerCase()
+      ? { ...u, status, ...(role ? { role: role as any } : {}) }
+      : u
   );
+  saveAppUsers(updatedUsers);
 
-  if (!foundUser) {
-    return {
-      success: false,
-      message: `ไม่พบสิทธิ์การใช้งานแอดมินสำหรับบัญชี ${maskIdentifier(emailOrId)} (${provider.toUpperCase()})\nกรุณาลงทะเบียนเจ้าหน้าที่ หรือติดต่อ Super Admin เพื่อขอเพิ่มสิทธิ์เข้าใช้งาน`,
-    };
+  try {
+    const res = await fetch('/api/users/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, emailOrId, status, role }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.users)) {
+        saveAppUsers(data.users);
+        return data.users;
+      }
+    }
+  } catch (err) {
+    console.warn('Server user status update sync failed:', err);
   }
 
-  if (foundUser.status === 'blocked') {
-    return {
-      success: false,
-      message: `บัญชี ${maskIdentifier(emailOrId)} ถูกระงับสิทธิ์การใช้งาน กรุณาติดต่อ Super Admin`,
-    };
-  }
+  return updatedUsers;
+}
 
-  return { success: true, user: foundUser };
+export async function resetServerUsers(): Promise<AppUser[]> {
+  saveAppUsers(DEFAULT_USERS);
+  try {
+    const res = await fetch('/api/users/reset', { method: 'POST' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.users)) {
+        saveAppUsers(data.users);
+        return data.users;
+      }
+    }
+  } catch (err) {
+    console.warn('Server user reset failed:', err);
+  }
+  return DEFAULT_USERS;
 }
 
