@@ -1,4 +1,4 @@
-import { AppUser, UserRole } from '../types';
+import { AppUser, OfficerRegistrationData } from '../types';
 
 const USERS_STORAGE_KEY = 'rdu_satun_app_users_v1';
 const CURRENT_USER_KEY = 'rdu_satun_current_user_v1';
@@ -9,7 +9,13 @@ export const DEFAULT_USERS: AppUser[] = [
   {
     id: 'usr_super_admin',
     emailOrId: 'akaporn1234@gmail.com',
-    name: 'Akaporn (Super Admin)',
+    name: 'เอกภรณ์ สุวรรณฉวี',
+    firstName: 'เอกภรณ์',
+    lastName: 'สุวรรณฉวี',
+    position: 'ภก.ชำนาญการพิเศษ (Super Admin)',
+    workGroup: 'กลุ่มงานเภสัชกรรมและคุ้มครองผู้บริโภค',
+    affiliation: 'สำนักงานสาธารณสุขจังหวัดสตูล',
+    phone: '081-234-5678',
     provider: 'google',
     role: 'super_admin',
     status: 'active',
@@ -19,7 +25,13 @@ export const DEFAULT_USERS: AppUser[] = [
   {
     id: 'usr_admin_1',
     emailOrId: 'satun.rdu.admin@gmail.com',
-    name: 'เจ้าหน้าที่ สสจ.สตูล (Admin)',
+    name: 'เจ้าหน้าที่ สสจ.สตูล',
+    firstName: 'เจ้าหน้าที่',
+    lastName: 'สสจ.สตูล',
+    position: 'นักวิชาการสาธารณสุข',
+    workGroup: 'กลุ่มงานพัฒนายุทธศาสตร์สาธารณสุข',
+    affiliation: 'สำนักงานสาธารณสุขจังหวัดสตูล',
+    phone: '074-711-071',
     provider: 'google',
     role: 'admin',
     status: 'active',
@@ -30,6 +42,12 @@ export const DEFAULT_USERS: AppUser[] = [
     id: 'usr_line_admin',
     emailOrId: 'satun_rdu_line',
     name: 'LINE Admin Satun',
+    firstName: 'เจ้าหน้าที่',
+    lastName: 'LINE Admin',
+    position: 'เจ้าพนักงานสาธารณสุข',
+    workGroup: 'กลุ่มงานควบคุมโรคติดต่อ',
+    affiliation: 'สำนักงานสาธารณสุขอำเภอเมืองสตูล',
+    phone: '074-721-123',
     provider: 'line',
     role: 'admin',
     status: 'active',
@@ -106,41 +124,152 @@ export function maskIdentifier(identifier: string): string {
   return `${identifier.slice(0, 3)}***${identifier.slice(-2)}`;
 }
 
-export function validateLogin(
-  emailOrId: string,
-  provider: 'google' | 'line'
+export function registerOfficer(
+  data: OfficerRegistrationData
 ): { success: boolean; user?: AppUser; message?: string } {
   const users = loadAppUsers();
-  const cleanId = emailOrId.trim().toLowerCase();
+  const cleanId = data.emailOrId.trim().toLowerCase();
 
-  // Special check for primary Super Admin
-  if (cleanId === SUPER_ADMIN_EMAIL.toLowerCase()) {
-    let superAdmin = users.find(
-      (u) => u.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
-    );
-    if (!superAdmin) {
-      superAdmin = DEFAULT_USERS[0];
-    }
-    return { success: true, user: superAdmin };
-  }
-
-  const foundUser = users.find(
-    (u) => u.emailOrId.toLowerCase() === cleanId && u.provider === provider
+  const existing = users.find(
+    (u) => u.emailOrId.toLowerCase() === cleanId && u.provider === data.provider
   );
 
-  if (!foundUser) {
+  if (existing) {
     return {
       success: false,
-      message: `ไม่พบสิทธิ์การใช้งานแอดมินสำหรับบัญชี ${maskIdentifier(emailOrId)} (${provider.toUpperCase()})\nกรุณาติดต่อ Super Admin เพื่อขอเพิ่มสิทธิ์เข้าใช้งาน`,
+      message: `บัญชี ${maskIdentifier(data.emailOrId)} (${data.provider.toUpperCase()}) ได้มีการลงทะเบียนในระบบแล้ว`,
     };
   }
 
-  if (foundUser.status === 'blocked') {
-    return {
-      success: false,
-      message: `บัญชี ${maskIdentifier(emailOrId)} ถูกระงับสิทธิ์การใช้งาน กรุณาติดต่อ Super Admin`,
-    };
-  }
+  const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`.trim();
+  const newUser: AppUser = {
+    id: `usr_reg_${Date.now()}`,
+    emailOrId: data.emailOrId.trim(),
+    name: fullName,
+    firstName: data.firstName.trim(),
+    lastName: data.lastName.trim(),
+    position: data.position.trim(),
+    workGroup: data.workGroup.trim(),
+    affiliation: data.affiliation.trim(),
+    phone: data.phone.trim(),
+    provider: data.provider,
+    role: 'admin',
+    status: 'pending',
+    createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    avatarUrl:
+      data.provider === 'google'
+        ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'
+        : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+  };
 
-  return { success: true, user: foundUser };
+  const updatedUsers = [newUser, ...users];
+  saveAppUsers(updatedUsers);
+
+  return {
+    success: true,
+    user: newUser,
+    message: 'ลงทะเบียนสำเร็จ! ข้อมูลของคุณถูกส่งไปยังผู้ดูแลระบบเพื่ออนุมัติสิทธิ์เรียบร้อยแล้ว',
+  };
 }
+
+export async function fetchServerUsers(): Promise<AppUser[]> {
+  try {
+    const res = await fetch('/api/users');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.users)) {
+        saveAppUsers(data.users);
+        return data.users;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch users from server, fallback to local storage', err);
+  }
+  return loadAppUsers();
+}
+
+export async function registerOfficerServer(
+  data: OfficerRegistrationData
+): Promise<{ success: boolean; user?: AppUser; message?: string }> {
+  // First save locally
+  const localRes = registerOfficer(data);
+
+  try {
+    const res = await fetch('/api/users/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      const serverData = await res.json();
+      if (serverData.status === 'success' && serverData.user) {
+        const users = loadAppUsers();
+        const exists = users.some((u) => u.id === serverData.user.id);
+        if (!exists) {
+          saveAppUsers([serverData.user, ...users]);
+        }
+        return {
+          success: true,
+          user: serverData.user,
+          message: serverData.message || 'ลงทะเบียนสำเร็จ! ข้อมูลถูกส่งไปยังผู้ดูแลระบบเพื่ออนุมัติสิทธิ์เรียบร้อยแล้ว',
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Server registration sync failed, using local registration:', err);
+  }
+
+  return localRes;
+}
+
+export async function updateUserStatusServer(
+  userId: string,
+  emailOrId: string,
+  status: 'pending' | 'active' | 'suspended' | 'blocked',
+  role?: string
+): Promise<AppUser[]> {
+  const currentUsers = loadAppUsers();
+  const updatedUsers = currentUsers.map((u) =>
+    u.id === userId || u.emailOrId.toLowerCase() === emailOrId.toLowerCase()
+      ? { ...u, status, ...(role ? { role: role as any } : {}) }
+      : u
+  );
+  saveAppUsers(updatedUsers);
+
+  try {
+    const res = await fetch('/api/users/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, emailOrId, status, role }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.users)) {
+        saveAppUsers(data.users);
+        return data.users;
+      }
+    }
+  } catch (err) {
+    console.warn('Server user status update sync failed:', err);
+  }
+
+  return updatedUsers;
+}
+
+export async function resetServerUsers(): Promise<AppUser[]> {
+  saveAppUsers(DEFAULT_USERS);
+  try {
+    const res = await fetch('/api/users/reset', { method: 'POST' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.users)) {
+        saveAppUsers(data.users);
+        return data.users;
+      }
+    }
+  } catch (err) {
+    console.warn('Server user reset failed:', err);
+  }
+  return DEFAULT_USERS;
+}
+

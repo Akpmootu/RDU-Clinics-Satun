@@ -11,7 +11,7 @@ interface HeaderProps {
   settings: SettingsConfig;
   userRole: 'admin' | 'user';
   currentUser: AppUser | null;
-  onOpenAdminLogin: () => void;
+  onOpenAdminLogin: (mode?: 'login' | 'register') => void;
   onLogoutAdmin: () => void;
   onOpenSettings: () => void;
   onOpenGasCode: () => void;
@@ -122,12 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
             {userRole === 'admin' ? (
               <div className="flex items-center gap-1.5">
                 {/* User Profile Badge */}
-                <button
-                  type="button"
-                  onClick={onLogoutAdmin}
-                  className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-900 text-white border border-slate-700 flex items-center gap-1.5 shadow-xs hover:bg-slate-800 transition"
-                  title="คลิกเพื่อออกจากระบบ"
-                >
+                <div className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-900 text-white border border-slate-700 flex items-center gap-1.5 shadow-xs">
                   {currentUser?.provider === 'google' ? (
                     <i className="fa-brands fa-google text-rose-400 text-xs"></i>
                   ) : currentUser?.provider === 'line' ? (
@@ -143,7 +138,15 @@ export const Header: React.FC<HeaderProps> = ({
                       Super
                     </span>
                   )}
-                  <i className="fa-solid fa-right-from-bracket text-[10px] text-slate-400 ml-0.5"></i>
+                </div>
+                <button
+                  type="button"
+                  onClick={onLogoutAdmin}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-4 focus:ring-slate-100"
+                  title="ออกจากระบบ"
+                  aria-label="ออกจากระบบ"
+                >
+                  <i className="fa-solid fa-right-from-bracket text-xs"></i>
                 </button>
 
                 {/* Super Admin User Management Button */}
@@ -160,15 +163,26 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={onOpenAdminLogin}
-                className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-200 flex items-center gap-1.5 transition"
-                title="คลิกเพื่อเข้าสู่ระบบแอดมิน"
-              >
-                <i className="fa-solid fa-user text-slate-500 text-xs"></i>
-                <span className="hidden sm:inline">ผู้ใช้งานทั่วไป</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onOpenAdminLogin('register')}
+                  className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 transition"
+                  title="ลงทะเบียนเจ้าหน้าที่"
+                >
+                  <i className="fa-solid fa-user-plus text-emerald-600 text-xs"></i>
+                  <span className="hidden sm:inline">ลงทะเบียนเจ้าหน้าที่</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenAdminLogin('login')}
+                  className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center gap-1.5 transition"
+                  title="เข้าสู่ระบบเจ้าหน้าที่"
+                >
+                  <i className="fa-solid fa-user text-slate-500 text-xs"></i>
+                  <span className="hidden sm:inline">เข้าสู่ระบบเจ้าหน้าที่</span>
+                </button>
+              </div>
             )}
 
             {/* Live API Status Badge */}
