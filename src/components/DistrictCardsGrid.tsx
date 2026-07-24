@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { DistrictSummary, Clinic, DistrictName } from '../types';
 import { DistrictDetailModal } from './DistrictDetailModal';
+import { ProgressScale } from './ProgressScale';
 
 interface DistrictCardsGridProps {
   districtSummaries: DistrictSummary[];
@@ -115,18 +116,22 @@ export const DistrictCardsGrid: React.FC<DistrictCardsGridProps> = ({
                 <div className="space-y-1.5 mb-4">
                   <div className="flex justify-between items-center text-xs font-semibold">
                     <span className="text-slate-600">อัตราผ่านเกณฑ์ RDU</span>
-                    <span className={`font-bold ${isTargetAchieved ? 'text-emerald-600' : 'text-slate-800'}`}>
-                      {summary.passPercentage}% / 25%
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-extrabold ${isTargetAchieved ? 'text-emerald-600' : 'text-amber-700'}`}>
+                        {summary.passPercentage}%
+                      </span>
+                      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">
+                        เกณฑ์ {summary.targetPercentage}%
+                      </span>
+                    </div>
                   </div>
-                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200">
-                    <div
-                      className={`h-full rounded-full transition-all duration-700 ${
-                        isTargetAchieved ? 'bg-emerald-500' : 'bg-amber-400'
-                      }`}
-                      style={{ width: `${Math.min((summary.passPercentage / 25) * 100, 100)}%` }}
-                    ></div>
-                  </div>
+                  <ProgressScale
+                    value={summary.passPercentage}
+                    target={summary.targetPercentage}
+                    achieved={isTargetAchieved}
+                    compact
+                    ariaLabel={`อัตราผ่านเกณฑ์ RDU อำเภอ${summary.district}`}
+                  />
                 </div>
 
                 {/* Visual Clinic Status Badges (Interactive Tags) */}

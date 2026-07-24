@@ -1,6 +1,7 @@
 import React from 'react';
 import { ProvincialSummary, DistrictName } from '../types';
 import { SATUN_DISTRICTS } from '../data/initialData';
+import { ProgressScale } from './ProgressScale';
 
 interface ProvincialKpiHeaderProps {
   summary: ProvincialSummary;
@@ -27,8 +28,10 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
     isProvinceTargetAchieved,
   } = summary;
 
-  // Calculation for progress bar width
-  const progressRatio = Math.min((overallPassPercentage / overallTargetPercentage) * 100, 100);
+  const targetClinicCount = Math.ceil(
+    totalTargetClinics * (overallTargetPercentage / 100)
+  );
+  const remainingToTarget = Math.max(targetClinicCount - passedClinics, 0);
 
   return (
     <section className="space-y-4">
@@ -165,44 +168,62 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
 
         </div>
 
-        {/* Provincial Target Progress Gauge Bar */}
-        <div className="mt-6 pt-4 border-t border-slate-100 space-y-2">
-          <div className="flex items-center justify-between text-xs sm:text-sm font-semibold">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-800">ความก้าวหน้าการผ่านเกณฑ์ RDU ระดับ 2+ ทั้งจังหวัด</span>
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                {overallPassPercentage}%
-              </span>
+        {/* Provincial Target Progress Gauge Bar — always uses a true 0–100% scale */}
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900">
+                  ความก้าวหน้าการผ่านเกณฑ์ RDU ระดับ 2+ ทั้งจังหวัด
+                </h3>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
+                  สเกลเต็ม 100%
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                แถบสีแสดงผลที่ดำเนินการแล้วจริง ส่วนเส้นสีเข้มคือเกณฑ์ขั้นต่ำที่จังหวัดต้องผ่าน
+              </p>
             </div>
-            <span className="text-slate-500 font-normal">
-              เป้าหมายยุทธศาสตร์: <strong className="text-slate-900">{overallTargetPercentage}%</strong> ({Math.ceil(totalTargetClinics * 0.25)} แห่ง)
-            </span>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <span className="block text-[10px] font-medium text-emerald-700">ดำเนินการแล้ว</span>
+                <strong className="text-lg font-extrabold text-emerald-800">{overallPassPercentage}%</strong>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <span className="block text-[10px] font-medium text-slate-500">เกณฑ์ที่ต้องผ่าน</span>
+                <strong className="text-lg font-extrabold text-slate-800">{overallTargetPercentage}%</strong>
+              </div>
+              <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 sm:col-span-1">
+                <span className="block text-[10px] font-medium text-blue-700">
+                  {isProvinceTargetAchieved ? 'สูงกว่าเป้าหมาย' : 'ต้องผ่านเพิ่ม'}
+                </span>
+                <strong className="text-sm font-extrabold text-blue-800">
+                  {isProvinceTargetAchieved
+                    ? `+${Math.max(overallPassPercentage - overallTargetPercentage, 0).toFixed(1)}%`
+                    : `${remainingToTarget} แห่ง`}
+                </strong>
+              </div>
+            </div>
           </div>
 
-          {/* Progress Bar Container */}
-          <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200 relative">
-            {/* Target Line Indicator */}
-            <div
-              className="absolute top-0 bottom-0 w-1 bg-slate-900 z-10 shadow-md"
-              style={{ left: '25%' }}
-              title="เส้นเป้าหมาย 25%"
-            >
-              <span className="absolute -top-5 -left-3 text-[10px] font-extrabold bg-slate-900 text-white px-1.5 py-0.2 rounded">
-                25%
-              </span>
-            </div>
+          <div className="relative mt-4">
+            <ProgressScale
+              value={overallPassPercentage}
+              target={overallTargetPercentage}
+              achieved={isProvinceTargetAchieved}
+              ariaLabel="ความก้าวหน้าการผ่านเกณฑ์ RDU ระดับจังหวัด"
+            />
+          </div>
 
-            {/* Filled Progress Bar */}
-            <div
-              className={`h-full rounded-full transition-all duration-1000 ease-out flex items-center justify-end pr-2 text-[10px] font-bold text-white shadow-xs ${
-                isProvinceTargetAchieved
-                  ? 'bg-gradient-to-r from-teal-500 via-emerald-500 to-green-500 glow-emerald'
-                  : 'bg-gradient-to-r from-amber-400 via-emerald-500 to-teal-600'
-              }`}
-              style={{ width: `${Math.max(progressRatio, 5)}%` }}
-            >
-              {overallPassPercentage > 5 && `${overallPassPercentage}%`}
-            </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <span className="flex items-center gap-1.5 text-slate-500">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
+              ผ่านแล้ว {passedClinics} จาก {totalTargetClinics} แห่ง
+            </span>
+            <span className="font-medium text-slate-600">
+              เป้าหมายขั้นต่ำ {targetClinicCount} แห่ง ({overallTargetPercentage}%)
+            </span>
           </div>
         </div>
 
