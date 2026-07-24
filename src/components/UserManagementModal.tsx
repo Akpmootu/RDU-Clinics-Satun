@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { AppUser, UserRole } from '../types';
-import { SUPER_ADMIN_EMAIL, maskIdentifier } from '../services/userService';
+import { SUPER_ADMIN_EMAIL, maskIdentifier, loadAppUsers } from '../services/userService';
 import { sendOfficerApprovalTelegramNotification, loadSettings } from '../services/api';
 
 interface UserManagementModalProps {
@@ -27,6 +27,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const [newName, setNewName] = useState('');
   const [newProvider, setNewProvider] = useState<'google' | 'line'>('google');
   const [newRole, setNewRole] = useState<UserRole>('admin');
+
+  useEffect(() => {
+    if (isOpen) {
+      onUpdateUsers(loadAppUsers());
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

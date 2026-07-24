@@ -10,6 +10,7 @@ interface AdminLoginPageProps {
   onLogout: () => void;
   onGoBackHome: () => void;
   initialMode?: 'login' | 'register';
+  onUsersUpdated?: () => void;
 }
 
 type AuthStatus =
@@ -87,6 +88,7 @@ export function AdminLoginPage({
   onLogout,
   onGoBackHome,
   initialMode = 'login',
+  onUsersUpdated,
 }: AdminLoginPageProps) {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>(initialMode);
   const [status, setStatus] = useState<AuthStatus>('default');
@@ -197,6 +199,7 @@ export function AdminLoginPage({
 
     if (res.success && res.user) {
       setRegSuccessUser(res.user);
+      onUsersUpdated?.();
       sendOfficerRegistrationTelegramNotification(res.user, loadSettings()).catch(() => {});
       Swal.fire({
         icon: 'success',

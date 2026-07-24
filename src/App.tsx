@@ -31,6 +31,7 @@ import {
   calculateSummaries,
   fetchFromGas,
   updateClinicStatusApi,
+  sendOfficerRegistrationTelegramNotification,
 } from './services/api';
 import {
   loadAppUsers,
@@ -109,15 +110,52 @@ export default function App() {
       })
       .then((data) => {
         if (data && data.status === 'success' && data.user) {
-          const authUser: AppUser = {
+          let authUser: AppUser = {
             id: data.user.id,
-            name: data.user.displayName,
+            name: data.user.displayName || data.user.emailOrId,
             emailOrId: data.user.emailOrId,
             provider: data.user.provider,
             role: data.user.role,
             status: data.user.status,
             createdAt: new Date().toISOString(),
           };
+
+          const currentUsers = loadAppUsers();
+          const existingIndex = currentUsers.findIndex(
+            (u) => u.emailOrId.toLowerCase() === authUser.emailOrId.toLowerCase()
+          );
+
+          if (existingIndex === -1) {
+            // New user logging in via OAuth (e.g. LINE or Google) that isn't in appUsers yet
+            const newPendingUser: AppUser = {
+              ...authUser,
+              position: `เจ้าหน้าที่ (ผ่าน ${authUser.provider.toUpperCase()})`,
+              workGroup: 'รอระบุกลุ่มงาน',
+              affiliation: 'รอระบุสังกัด',
+              phone: '-',
+              createdAt: new Date().toLocaleString('th-TH'),
+            };
+            const updatedUsers = [newPendingUser, ...currentUsers];
+            saveAppUsers(updatedUsers);
+            setAppUsers(updatedUsers);
+
+            if (authUser.status === 'pending') {
+              sendOfficerRegistrationTelegramNotification(newPendingUser, loadSettings()).catch(() => {});
+            }
+          } else {
+            const existingUser = currentUsers[existingIndex];
+            // Check if Super Admin approved this user in appUsers locally!
+            if (existingUser.status === 'active' && authUser.status === 'pending') {
+              authUser = {
+                ...authUser,
+                status: 'active',
+                role: existingUser.role || 'admin',
+                name: existingUser.name || authUser.name,
+                position: existingUser.position || authUser.position,
+              };
+            }
+          }
+
           setCurrentUser(authUser);
           saveCurrentUser(authUser);
 
@@ -213,6 +251,11 @@ export default function App() {
     saveAppUsers(newUsers);
   };
 
+  const handleOpenUserManagementModal = () => {
+    setAppUsers(loadAppUsers());
+    setIsUserManagementModalOpen(true);
+  };
+
   const handleResetAppUsers = () => {
     setAppUsers(DEFAULT_USERS);
     saveAppUsers(DEFAULT_USERS);
@@ -269,6 +312,7 @@ export default function App() {
         currentUser={currentUser}
         initialMode={authPageMode}
         onLogout={handleLogoutAdmin}
+        onUsersUpdated={() => setAppUsers(loadAppUsers())}
         onGoBackHome={() => {
           window.history.replaceState({}, document.title, '/');
           setActiveTab('landing');
@@ -303,7 +347,7 @@ export default function App() {
           onLogoutAdmin={handleLogoutAdmin}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onOpenGasCode={() => setIsGasCodeModalOpen(true)}
-          onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
+          onOpenUserManagement={handleOpenUserManagementModal}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
         />
@@ -332,7 +376,7 @@ export default function App() {
             onLogoutAdmin={handleLogoutAdmin}
             onOpenSettings={() => setIsSettingsModalOpen(true)}
             onOpenGasCode={() => setIsGasCodeModalOpen(true)}
-            onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
+            onOpenUserManagement={handleOpenUserManagementModal}
           />
         )}
 
