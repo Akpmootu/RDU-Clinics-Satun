@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { LandingPage } from './components/LandingPage';
+import { LandingHeader } from './components/LandingHeader';
 import { ProvincialKpiHeader } from './components/ProvincialKpiHeader';
 import { DistrictCardsGrid } from './components/DistrictCardsGrid';
 import { DataTableView } from './components/DataTableView';
@@ -30,13 +31,15 @@ import {
   calculateSummaries,
   fetchFromGas,
   updateClinicStatusApi,
+  sendOfficerRegistrationTelegramNotification,
 } from './services/api';
 import {
   loadAppUsers,
   saveAppUsers,
-  loadCurrentUser,
   saveCurrentUser,
   DEFAULT_USERS,
+  fetchServerUsers,
+  resetServerUsers,
 } from './services/userService';
 
 export default function App() {
@@ -46,16 +49,14 @@ export default function App() {
   const [logs, setLogs] = useState<AuditLog[]>(loadLocalLogs());
 
   // --- Role & Authentication State ---
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => loadCurrentUser());
-  const [userRole, setUserRole] = useState<'admin' | 'user'>(() => {
-    const savedUser = loadCurrentUser();
-    return savedUser && savedUser.status === 'active' ? 'admin' : 'user';
-  });
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'user'>('user');
   const [appUsers, setAppUsers] = useState<AppUser[]>(() => loadAppUsers());
 
   // --- UI Layout States ---
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('landing');
+  const [authPageMode, setAuthPageMode] = useState<'login' | 'register'>('login');
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictName | 'ทั้งหมด'>('ทั้งหมด');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [tvMode, setTvMode] = useState<boolean>(false);
@@ -96,32 +97,89 @@ export default function App() {
 
   // Check backend session via /api/auth/me & handle OAuth callback redirect parameter
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => {
+    fetchServerUsers().then(setAppUsers).catch(() => {});
+    const urlParams = new URLSearchParams(window.location.search);
+    const authStatus = urlParams.get('auth');
+
+    fetch('/api/auth/me', { credentials: 'same-origin' })
+      .then(async (res) => {
         if (res.ok) return res.json();
+        if (res.status === 401) {
+          setCurrentUser(null);
+          setUserRole('user');
+          saveCurrentUser(null);
+        }
         return null;
       })
       .then((data) => {
         if (data && data.status === 'success' && data.user) {
-          const authUser: AppUser = {
+          let authUser: AppUser = {
             id: data.user.id,
-            name: data.user.displayName,
+            name: data.user.displayName || data.user.emailOrId,
             emailOrId: data.user.emailOrId,
             provider: data.user.provider,
             role: data.user.role,
-            status: 'active',
+            status: data.user.status,
             createdAt: new Date().toISOString(),
           };
+
+          const currentUsers = loadAppUsers();
+          const existingIndex = currentUsers.findIndex(
+            (u) => u.emailOrId.toLowerCase() === authUser.emailOrId.toLowerCase()
+          );
+
+          if (existingIndex === -1) {
+            // New user logging in via OAuth (e.g. LINE or Google) that isn't in appUsers yet
+            const newPendingUser: AppUser = {
+              ...authUser,
+              position: `เจ้าหน้าที่ (ผ่าน ${authUser.provider.toUpperCase()})`,
+              workGroup: 'รอระบุกลุ่มงาน',
+              affiliation: 'รอระบุสังกัด',
+              phone: '-',
+              createdAt: new Date().toLocaleString('th-TH'),
+            };
+            const updatedUsers = [newPendingUser, ...currentUsers];
+            saveAppUsers(updatedUsers);
+            setAppUsers(updatedUsers);
+
+            if (authUser.status === 'pending') {
+              sendOfficerRegistrationTelegramNotification(newPendingUser, loadSettings()).catch(() => {});
+            }
+          } else {
+            const existingUser = currentUsers[existingIndex];
+            // Check if Super Admin approved this user in appUsers locally!
+            if (existingUser.status === 'active' && authUser.status === 'pending') {
+              authUser = {
+                ...authUser,
+                status: 'active',
+                role: existingUser.role || 'admin',
+                name: existingUser.name || authUser.name,
+                position: existingUser.position || authUser.position,
+              };
+            }
+          }
+
           setCurrentUser(authUser);
-          setUserRole('admin');
           saveCurrentUser(authUser);
+
+          const hasAdminAccess =
+            authUser.status === 'active' &&
+            (authUser.role === 'admin' || authUser.role === 'super_admin');
+          setUserRole(hasAdminAccess ? 'admin' : 'user');
+
+          if (hasAdminAccess && authStatus === 'success') {
+            setActiveTab('dashboard');
+            window.history.replaceState({}, document.title, '/');
+          }
+        } else if (data?.status === 'unauthenticated') {
+          setCurrentUser(null);
+          setUserRole('user');
+          saveCurrentUser(null);
         }
       })
       .catch(() => {});
 
     // Check URL search query for OAuth signals & admin routes
-    const urlParams = new URLSearchParams(window.location.search);
-    const authStatus = urlParams.get('auth');
     if (window.location.pathname.startsWith('/admin') || (authStatus && authStatus !== 'success')) {
       setActiveTab('admin-login');
     }
@@ -170,14 +228,16 @@ export default function App() {
     setIsUpdateModalOpen(true);
   };
 
-  const handleAdminLoginSuccess = (user: AppUser) => {
-    setCurrentUser(user);
-    setUserRole('admin');
-    saveCurrentUser(user);
-    setIsAdminLoginModalOpen(false);
-  };
+  const handleLogoutAdmin = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch {
+      // Clear the local display state even when the network is unavailable.
+    }
 
-  const handleLogoutAdmin = () => {
     setCurrentUser(null);
     setUserRole('user');
     saveCurrentUser(null);
@@ -194,9 +254,15 @@ export default function App() {
     saveAppUsers(newUsers);
   };
 
-  const handleResetAppUsers = () => {
-    setAppUsers(DEFAULT_USERS);
-    saveAppUsers(DEFAULT_USERS);
+  const handleOpenUserManagementModal = async () => {
+    const serverUsers = await fetchServerUsers();
+    setAppUsers(serverUsers);
+    setIsUserManagementModalOpen(true);
+  };
+
+  const handleResetAppUsers = async () => {
+    const resUsers = await resetServerUsers();
+    setAppUsers(resUsers);
     Swal.fire({
       icon: 'success',
       title: 'คืนค่าเริ่มต้นผู้ใช้งานเรียบร้อยแล้ว!',
@@ -239,58 +305,93 @@ export default function App() {
     saveLocalLogs(INITIAL_AUDIT_LOGS);
   };
 
+  const handleOpenAuthPage = (mode: 'login' | 'register' = 'login') => {
+    setAuthPageMode(mode);
+    setActiveTab('admin-login');
+  };
+
+  if (activeTab === 'admin-login') {
+    return (
+      <AdminLoginPage
+        currentUser={currentUser}
+        initialMode={authPageMode}
+        onLogout={handleLogoutAdmin}
+        onUsersUpdated={() => setAppUsers(loadAppUsers())}
+        onGoBackHome={() => {
+          window.history.replaceState({}, document.title, '/');
+          setActiveTab('landing');
+        }}
+      />
+    );
+  }
+
   return (
     <div className={`min-h-screen bg-slate-50 text-slate-800 font-['Kanit',sans-serif] flex flex-col ${
-      tvMode ? 'bg-slate-900 text-slate-100' : 'bg-gradient-animated'
+      tvMode && activeTab !== 'landing' ? 'bg-slate-900 text-slate-100' : activeTab === 'landing' ? '' : 'bg-gradient-animated'
     }`}>
       
-      {/* Pinned Sticky Header */}
-      <Header
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        tvMode={tvMode}
-        setTvMode={setTvMode}
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        settings={settings}
-        userRole={userRole}
-        currentUser={currentUser}
-        onOpenAdminLogin={() => setActiveTab('admin-login')}
-        onLogoutAdmin={handleLogoutAdmin}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
-        onOpenGasCode={() => setIsGasCodeModalOpen(true)}
-        onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
-
-      {/* Main Layout Container */}
-      <div className="flex-1 flex max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6 relative">
-        
-        {/* Gemini-Style Sidebar Drawer */}
-        <Sidebar
-          isOpen={sidebarOpen}
-          setIsOpen={setSidebarOpen}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          selectedDistrict={selectedDistrict}
-          setSelectedDistrict={setSelectedDistrict}
-          totalClinicsCount={summary.totalTargetClinics}
-          passedCount={summary.passedClinics}
+      {activeTab === 'landing' ? (
+        <LandingHeader
+          userRole={userRole}
+          onNavigateToDashboard={() => setActiveTab('dashboard')}
+          onOpenAdminLogin={handleOpenAuthPage}
+        />
+      ) : (
+        <Header
+          sidebarOpen={sidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          tvMode={tvMode}
+          setTvMode={setTvMode}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          settings={settings}
           userRole={userRole}
           currentUser={currentUser}
-          onOpenAdminLogin={() => setActiveTab('admin-login')}
+          onOpenAdminLogin={handleOpenAuthPage}
           onLogoutAdmin={handleLogoutAdmin}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onOpenGasCode={() => setIsGasCodeModalOpen(true)}
-          onOpenUserManagement={() => setIsUserManagementModalOpen(true)}
+          onOpenUserManagement={handleOpenUserManagementModal}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
         />
+      )}
+
+      {/* Main Layout Container */}
+      <div className={activeTab === 'landing'
+        ? 'flex-1 w-full'
+        : 'relative mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6 lg:px-8'
+      }>
+
+        {/* Gemini-Style Sidebar Drawer */}
+        {activeTab !== 'landing' && (
+          <Sidebar
+            isOpen={sidebarOpen}
+            setIsOpen={setSidebarOpen}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            selectedDistrict={selectedDistrict}
+            setSelectedDistrict={setSelectedDistrict}
+            totalClinicsCount={summary.totalTargetClinics}
+            passedCount={summary.passedClinics}
+            userRole={userRole}
+            currentUser={currentUser}
+            onOpenAdminLogin={handleOpenAuthPage}
+            onLogoutAdmin={handleLogoutAdmin}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
+            onOpenGasCode={() => setIsGasCodeModalOpen(true)}
+            onOpenUserManagement={handleOpenUserManagementModal}
+          />
+        )}
 
         {/* Primary Page Content Area */}
-        <main className="flex-1 space-y-6 pb-20 md:pb-8 w-full overflow-hidden">
+        <main className={activeTab === 'landing'
+          ? 'w-full flex-1'
+          : 'w-full flex-1 space-y-6 overflow-hidden pb-20 md:pb-8'
+        }>
           
           {/* Syncing Indicator Banner */}
-          {isLoading && (
+          {isLoading && activeTab !== 'landing' && (
             <div className="p-3 bg-emerald-600 text-white text-xs font-semibold rounded-2xl flex items-center justify-between shadow-md animate-pulse">
               <div className="flex items-center gap-2">
                 <i className="fa-solid fa-sync animate-spin text-sm"></i>
@@ -380,29 +481,16 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab 6: Admin Login Page (Dedicated Route View) */}
-          {activeTab === 'admin-login' && (
-            <div className="animate-fadeIn">
-              <AdminLoginPage
-                currentUser={currentUser}
-                onLoginSuccess={(user) => {
-                  handleAdminLoginSuccess(user);
-                  setActiveTab('dashboard');
-                }}
-                onLogout={handleLogoutAdmin}
-                onGoBackHome={() => setActiveTab('landing')}
-              />
-            </div>
-          )}
-
         </main>
       </div>
 
       {/* Sticky Mobile Bottom Navigation Bar */}
-      <BottomNav
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      {activeTab !== 'landing' && (
+        <BottomNav
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+        />
+      )}
 
       {/* Official Footer */}
       <Footer />
@@ -411,7 +499,6 @@ export default function App() {
       <AdminLoginModal
         isOpen={isAdminLoginModalOpen}
         onClose={() => setIsAdminLoginModalOpen(false)}
-        onLoginSuccess={handleAdminLoginSuccess}
       />
 
       {/* User Management Modal (Super Admin) */}

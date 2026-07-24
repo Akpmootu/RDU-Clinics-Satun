@@ -7,8 +7,8 @@ const LOGS_STORAGE_KEY = 'rdu_satun_logs_v1';
 
 export const PRESET_GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXONrK9d6i12UOjUrYiN9t-Nv3ompuh1iFFlm4E4qXqRiRKbVGcgsqJyxncq7g-vxcw/exec';
 export const PRESET_SPREADSHEET_ID = '1AbC_Satun_RDU_Private_Clinics_Sheet_2569';
-export const PRESET_TELEGRAM_BOT_TOKEN = '';
-export const PRESET_TELEGRAM_CHAT_ID = '';
+export const PRESET_TELEGRAM_BOT_TOKEN = '8642457774:AAEssByKIIelsFpDnkz9ridr-IT--J2Ap9I';
+export const PRESET_TELEGRAM_CHAT_ID = '-5319646324';
 
 const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
 
@@ -35,11 +35,10 @@ export function loadSettings(): SettingsConfig {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
-      // If user saved settings previously with empty/placeholder gasWebAppUrl, fallback to preset or env
       gasWebAppUrl: !isUrlPlaceholder ? savedUrl : DEFAULT_SETTINGS.gasWebAppUrl,
       spreadsheetId: parsed.spreadsheetId?.trim() ? parsed.spreadsheetId : DEFAULT_SETTINGS.spreadsheetId,
-      telegramBotToken: parsed.telegramBotToken !== undefined ? parsed.telegramBotToken : DEFAULT_SETTINGS.telegramBotToken,
-      telegramChatId: parsed.telegramChatId !== undefined ? parsed.telegramChatId : DEFAULT_SETTINGS.telegramChatId,
+      telegramBotToken: parsed.telegramBotToken?.trim() ? parsed.telegramBotToken.trim() : DEFAULT_SETTINGS.telegramBotToken,
+      telegramChatId: parsed.telegramChatId?.trim() ? parsed.telegramChatId.trim() : DEFAULT_SETTINGS.telegramChatId,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -318,5 +317,91 @@ export async function sendDirectTelegramMessage(
 
   if (!response.ok) {
     throw new Error('Telegram Bot API Response Error');
+  }
+}
+
+export async function sendOfficerRegistrationTelegramNotification(
+  user: {
+    name: string;
+    position?: string;
+    workGroup?: string;
+    affiliation?: string;
+    phone?: string;
+    emailOrId: string;
+    provider: string;
+  },
+  settings?: SettingsConfig
+) {
+  const botToken = settings?.telegramBotToken || PRESET_TELEGRAM_BOT_TOKEN;
+  const chatId = settings?.telegramChatId || PRESET_TELEGRAM_CHAT_ID;
+
+  if (!botToken || !chatId) return;
+
+  const nowStr = new Date().toLocaleString('th-TH');
+  const text =
+    `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
+    `👤 *ชื่อ-นามสกุล:* ${user.name}\n` +
+    `💼 *ตำแหน่ง:* ${user.position || '-'}\n` +
+    `🏢 *กลุ่มงาน:* ${user.workGroup || '-'}\n` +
+    `🏥 *สังกัด:* ${user.affiliation || '-'}\n` +
+    `📞 *เบอร์โทร:* ${user.phone || '-'}\n` +
+    `📧 *บัญชีใช้งาน:* ${user.emailOrId} (${user.provider.toUpperCase()})\n` +
+    `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
+    `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'Markdown',
+      }),
+    });
+  } catch (err) {
+    console.warn('Telegram registration notification failed:', err);
+  }
+}
+
+export async function sendOfficerApprovalTelegramNotification(
+  user: {
+    name: string;
+    position?: string;
+    workGroup?: string;
+    affiliation?: string;
+    emailOrId: string;
+  },
+  approvedBy: string = 'Super Admin',
+  settings?: SettingsConfig
+) {
+  const botToken = settings?.telegramBotToken || PRESET_TELEGRAM_BOT_TOKEN;
+  const chatId = settings?.telegramChatId || PRESET_TELEGRAM_CHAT_ID;
+
+  if (!botToken || !chatId) return;
+
+  const nowStr = new Date().toLocaleString('th-TH');
+  const text =
+    `✅ *[แจ้งเตือนการยืนยันรับ / อนุมัติสิทธิ์เจ้าหน้าที่]*\n\n` +
+    `👤 *ชื่อ-นามสกุล:* ${user.name}\n` +
+    `💼 *ตำแหน่ง:* ${user.position || '-'}\n` +
+    `🏥 *สังกัด:* ${user.affiliation || user.workGroup || '-'}\n` +
+    `📧 *บัญชีใช้งาน:* ${user.emailOrId}\n` +
+    `👑 *ผู้อนุมัติ:* ${approvedBy}\n` +
+    `🟢 *สถานะใหม่:* อนุมัติสิทธิ์เข้าใช้งานแล้ว (Active)\n\n` +
+    `🗓️ *เวลาอนุมัติ:* ${nowStr} น.`;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'Markdown',
+      }),
+    });
+  } catch (err) {
+    console.warn('Telegram approval notification failed:', err);
   }
 }

@@ -14,7 +14,7 @@ interface SidebarProps {
   passedCount: number;
   userRole: 'admin' | 'user';
   currentUser: AppUser | null;
-  onOpenAdminLogin: () => void;
+  onOpenAdminLogin: (mode?: 'login' | 'register') => void;
   onLogoutAdmin: () => void;
   onOpenSettings: () => void;
   onOpenGasCode: () => void;
@@ -247,8 +247,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         </div>
 
-        {/* Bottom Actions Footer inside Sidebar (Admin Only) */}
-        {userRole === 'admin' && (
+        {/* Bottom Actions Footer inside Sidebar */}
+        {userRole === 'admin' ? (
           <div className="p-4 border-t border-slate-200 space-y-2 bg-slate-50/80">
             {(currentUser?.role === 'super_admin' || currentUser?.emailOrId === 'akaporn1234@gmail.com') && (
               <button
@@ -283,6 +283,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <i className="fa-solid fa-gear"></i>
               <span>ตั้งค่า Google Sheets & Bot</span>
+            </button>
+          </div>
+        ) : (
+          <div className="p-4 border-t border-slate-200 space-y-2 bg-slate-50/80">
+            <button
+              onClick={() => {
+                onOpenAdminLogin('register');
+                if (window.innerWidth < 1024) setIsOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs"
+            >
+              <i className="fa-solid fa-user-plus text-xs"></i>
+              <span>ลงทะเบียนเจ้าหน้าที่</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onOpenAdminLogin('login');
+                if (window.innerWidth < 1024) setIsOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-100 transition shadow-2xs"
+            >
+              <i className="fa-solid fa-right-to-bracket text-emerald-600"></i>
+              <span>เข้าสู่ระบบเจ้าหน้าที่</span>
             </button>
           </div>
         )}
