@@ -3,6 +3,7 @@ import Swal from 'sweetalert2';
 import { AppUser } from '../types';
 import { AuthProviderButtons } from './AuthProviderButtons';
 import { registerOfficer } from '../services/userService';
+import { sendOfficerRegistrationTelegramNotification, loadSettings } from '../services/api';
 
 interface AdminLoginPageProps {
   currentUser: AppUser | null;
@@ -196,6 +197,7 @@ export function AdminLoginPage({
 
     if (res.success && res.user) {
       setRegSuccessUser(res.user);
+      sendOfficerRegistrationTelegramNotification(res.user, loadSettings()).catch(() => {});
       Swal.fire({
         icon: 'success',
         title: 'ลงทะเบียนเจ้าหน้าที่สำเร็จ! 🎉',
