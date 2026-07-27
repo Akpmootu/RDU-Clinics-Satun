@@ -71,6 +71,10 @@ export default function App() {
   const [isGasCodeModalOpen, setIsGasCodeModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const pendingUsersCount = useMemo(
+    () => appUsers.filter((user) => user.status === 'pending').length,
+    [appUsers],
+  );
 
 
   // --- Sync with the configured Google Sheet if active ---
@@ -349,17 +353,14 @@ export default function App() {
         <Header
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
-          tvMode={tvMode}
-          setTvMode={setTvMode}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           settings={settings}
           userRole={userRole}
           currentUser={currentUser}
+          pendingUsersCount={pendingUsersCount}
           onOpenAdminLogin={handleOpenAuthPage}
           onLogoutAdmin={handleLogoutAdmin}
-          onOpenSettings={() => setIsSettingsModalOpen(true)}
-          onOpenGasCode={() => setIsGasCodeModalOpen(true)}
           onOpenUserManagement={handleOpenUserManagementModal}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -385,6 +386,10 @@ export default function App() {
             passedCount={summary.passedClinics}
             userRole={userRole}
             currentUser={currentUser}
+            settings={settings}
+            pendingUsersCount={pendingUsersCount}
+            tvMode={tvMode}
+            setTvMode={setTvMode}
             onOpenAdminLogin={handleOpenAuthPage}
             onLogoutAdmin={handleLogoutAdmin}
             onOpenSettings={() => setIsSettingsModalOpen(true)}
@@ -498,6 +503,9 @@ export default function App() {
         <BottomNav
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          userRole={userRole}
+          pendingUsersCount={pendingUsersCount}
+          onOpenMenu={() => setSidebarOpen(true)}
         />
       )}
 
