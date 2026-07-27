@@ -9,6 +9,11 @@ import {
   verifyAdminToken,
   verifySignedOauthState,
 } from './auth.js';
+import {
+  DEFAULT_SHEET_GID,
+  DEFAULT_SPREADSHEET_ID,
+  loadGoogleSheetData,
+} from './googleSheets.js';
 
 type AuthProvider = 'google' | 'line';
 type AdminRole = 'super_admin' | 'admin' | 'viewer';
@@ -463,6 +468,35 @@ app.get('/api/health', (_req, res) => {
       session: { configured: isJwtConfigured() },
     },
   });
+});
+
+app.get('/api/google-sheet', async (req, res) => {
+  const spreadsheetId =
+    typeof req.query.spreadsheetId === 'string' && req.query.spreadsheetId.trim()
+      ? req.query.spreadsheetId
+      : DEFAULT_SPREADSHEET_ID;
+  const gid =
+    typeof req.query.gid === 'string' && req.query.gid.trim()
+      ? req.query.gid
+      : DEFAULT_SHEET_GID;
+
+  try {
+    const data = await loadGoogleSheetData(spreadsheetId, gid);
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+    return res.json({
+      status: 'success',
+      timestamp: new Date().toISOString(),
+      data,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'ไม่สามารถอ่าน Google Sheet ได้';
+    console.error('Google Sheet sync failed', error);
+    return res.status(502).json({
+      status: 'error',
+      code: 'GOOGLE_SHEET_SYNC_FAILED',
+      message,
+    });
+  }
 });
 
 app.get('/api/auth/google', (_req, res) => {

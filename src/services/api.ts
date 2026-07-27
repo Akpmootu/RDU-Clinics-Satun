@@ -6,7 +6,8 @@ const CLINICS_STORAGE_KEY = 'rdu_satun_clinics_v1';
 const LOGS_STORAGE_KEY = 'rdu_satun_logs_v1';
 
 export const PRESET_GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXONrK9d6i12UOjUrYiN9t-Nv3ompuh1iFFlm4E4qXqRiRKbVGcgsqJyxncq7g-vxcw/exec';
-export const PRESET_SPREADSHEET_ID = '1AbC_Satun_RDU_Private_Clinics_Sheet_2569';
+export const PRESET_SPREADSHEET_ID = '1yLfjRD0PGXLJpsCyM8F9HsJfgb5gaDLAGhUjiB_eUY4';
+export const PRESET_SHEET_GID = '1062888583';
 export const PRESET_TELEGRAM_BOT_TOKEN = '8642457774:AAEssByKIIelsFpDnkz9ridr-IT--J2Ap9I';
 export const PRESET_TELEGRAM_CHAT_ID = '-5319646324';
 
@@ -32,11 +33,18 @@ export function loadSettings(): SettingsConfig {
     const savedUrl = parsed.gasWebAppUrl?.trim();
     const isUrlPlaceholder = !savedUrl || savedUrl.includes('AKfycbxSatunRDUClinics2569WebAppService');
 
+    const savedSpreadsheetId = parsed.spreadsheetId?.trim();
+    const spreadsheetIdIsPlaceholder =
+      !savedSpreadsheetId ||
+      savedSpreadsheetId === '1AbC_Satun_RDU_Private_Clinics_Sheet_2569';
+
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
       gasWebAppUrl: !isUrlPlaceholder ? savedUrl : DEFAULT_SETTINGS.gasWebAppUrl,
-      spreadsheetId: parsed.spreadsheetId?.trim() ? parsed.spreadsheetId : DEFAULT_SETTINGS.spreadsheetId,
+      spreadsheetId: spreadsheetIdIsPlaceholder
+        ? DEFAULT_SETTINGS.spreadsheetId
+        : savedSpreadsheetId,
       telegramBotToken: parsed.telegramBotToken?.trim() ? parsed.telegramBotToken.trim() : DEFAULT_SETTINGS.telegramBotToken,
       telegramChatId: parsed.telegramChatId?.trim() ? parsed.telegramChatId.trim() : DEFAULT_SETTINGS.telegramChatId,
     };
@@ -120,6 +128,31 @@ export function calculateSummaries(clinics: Clinic[]): ProvincialSummary {
     isProvinceTargetAchieved: overallPassPercentage >= 25.0,
     districtSummaries,
   };
+}
+
+export async function fetchFromGoogleSheet(spreadsheetId: string) {
+  const cleanSpreadsheetId = spreadsheetId.trim();
+  if (!cleanSpreadsheetId) {
+    throw new Error('ยังไม่ได้ระบุ Google Spreadsheet ID');
+  }
+
+  const query = new URLSearchParams({
+    spreadsheetId: cleanSpreadsheetId,
+    gid: PRESET_SHEET_GID,
+  });
+  const response = await fetch(`/api/google-sheet?${query.toString()}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+  const json = await response.json().catch(() => null);
+
+  if (!response.ok || json?.status !== 'success') {
+    throw new Error(
+      json?.message || `การเชื่อมต่อ Google Sheet ล้มเหลว (HTTP ${response.status})`
+    );
+  }
+
+  return json.data;
 }
 
 // --- Live Google Apps Script API Calls ---

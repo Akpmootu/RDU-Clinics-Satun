@@ -29,6 +29,7 @@ import {
   loadLocalLogs,
   saveLocalLogs,
   calculateSummaries,
+  fetchFromGoogleSheet,
   fetchFromGas,
   updateClinicStatusApi,
   sendOfficerRegistrationTelegramNotification,
@@ -73,13 +74,20 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
 
-  // --- Sync with Live Google Apps Script API if active ---
+  // --- Sync with the configured Google Sheet if active ---
   const refreshDataFromGas = useCallback(async () => {
-    if (!settings.isLiveApiActive || !settings.gasWebAppUrl) return;
+    if (!settings.isLiveApiActive || !settings.spreadsheetId) return;
 
     setIsLoading(true);
     try {
-      const data = await fetchFromGas(settings.gasWebAppUrl);
+      let data;
+      try {
+        data = await fetchFromGoogleSheet(settings.spreadsheetId);
+      } catch (sheetError) {
+        if (!settings.gasWebAppUrl) throw sheetError;
+        console.warn('Direct Google Sheet fetch failed, trying Google Apps Script:', sheetError);
+        data = await fetchFromGas(settings.gasWebAppUrl);
+      }
       if (data && data.clinics) {
         setClinics(data.clinics);
         saveLocalClinics(data.clinics);
@@ -93,7 +101,11 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [settings.isLiveApiActive, settings.gasWebAppUrl]);
+  }, [settings.isLiveApiActive, settings.spreadsheetId, settings.gasWebAppUrl]);
+
+  useEffect(() => {
+    void refreshDataFromGas();
+  }, [refreshDataFromGas]);
 
   // Check backend session via /api/auth/me & handle OAuth callback redirect parameter
   useEffect(() => {
