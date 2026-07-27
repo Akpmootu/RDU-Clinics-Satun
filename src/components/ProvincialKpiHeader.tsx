@@ -34,9 +34,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
   const remainingToTarget = Math.max(targetClinicCount - passedClinics, 0);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-3 sm:space-y-4">
       {/* Executive Hero Banner & Provincial KPI Container */}
-      <div className={`rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm relative overflow-hidden transition-all ${
+      <div className={`relative overflow-hidden rounded-[1.4rem] border border-slate-200/80 bg-white p-4 shadow-sm transition-all sm:rounded-3xl sm:p-6 ${
         tvMode ? 'ring-2 ring-emerald-500 bg-gradient-to-br from-white via-slate-50 to-emerald-50/30' : ''
       }`}>
         
@@ -45,37 +45,37 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
         <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-teal-100/60 rounded-full blur-3xl pointer-events-none"></div>
 
         {/* Top Header Title & Status Badge */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1.5">
+        <div className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-center sm:pb-5">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-[10px] font-semibold leading-snug text-emerald-800 sm:px-3 sm:text-xs">
                 <i className="fa-solid fa-square-check text-emerald-600"></i>
                 <span>เป้าหมายจังหวัด: ผ่านเกณฑ์ ≥ ระดับ 2 ไม่น้อยกว่า 25%</span>
               </span>
               {isProvinceTargetAchieved ? (
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white animate-bounce shadow-xs inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-xs sm:text-xs">
                   <i className="fa-solid fa-trophy text-amber-300"></i>
                   <span>บรรลุเป้าหมายแล้ว!</span>
                 </span>
               ) : (
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-medium text-amber-700 sm:text-xs">
                   <i className="fa-solid fa-hourglass-half text-amber-500"></i>
                   <span>อยู่ระหว่างดำเนินการ</span>
                 </span>
               )}
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+            <h2 className="text-lg font-extrabold leading-snug tracking-tight text-slate-900 sm:text-2xl">
               ระบบติดตามการประเมินการใช้ยาอย่างสมเหตุผล (RDU) ในคลินิกเอกชน จังหวัดสตูล
             </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500 sm:text-sm">
               ข้อมูลสรุปผลการประเมินตนเองของคลินิกเอกชน ประจำปีงบประมาณ 2569 (สำนักงานสาธารณสุขจังหวัดสตูล)
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start md:self-auto">
+          <div className="flex w-full items-center gap-2 self-start sm:w-auto lg:self-auto">
             <button
               onClick={onOpenUpdateModal}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-semibold shadow-md shadow-emerald-600/20 hover:shadow-lg transition flex items-center gap-2 group"
+              className="group flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-emerald-600/20 transition hover:from-emerald-700 hover:to-teal-700 hover:shadow-lg sm:w-auto sm:rounded-xl sm:text-sm"
               aria-label="บันทึกผลการประเมินคลินิก"
             >
               <i className="fa-solid fa-pen-to-square text-sm group-hover:scale-110 transition-transform"></i>
@@ -85,12 +85,12 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
         </div>
 
         {/* 4 Main KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mt-5">
+        <div className="mt-4 grid grid-cols-1 gap-2.5 min-[390px]:grid-cols-2 sm:mt-5 sm:gap-3.5 lg:grid-cols-4">
           
           {/* Card 1: Total Clinics Target */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 hover:bg-white hover:border-slate-300 transition shadow-xs group">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">เป้าหมายคลินิกทั้งหมด</span>
+          <div className="group min-h-28 rounded-2xl border border-slate-200/80 bg-slate-50 p-3.5 shadow-xs transition hover:border-slate-300 hover:bg-white sm:min-h-0 sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-[11px] font-medium leading-snug text-slate-500 sm:text-xs">เป้าหมายคลินิกทั้งหมด</span>
               <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm group-hover:scale-110 transition-transform">
                 <i className="fa-solid fa-clinic-medical"></i>
               </div>
@@ -106,9 +106,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
           </div>
 
           {/* Card 2: Assessed Clinics */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 hover:bg-white hover:border-slate-300 transition shadow-xs group">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">ได้รับการประเมินแล้ว</span>
+          <div className="group min-h-28 rounded-2xl border border-slate-200/80 bg-slate-50 p-3.5 shadow-xs transition hover:border-slate-300 hover:bg-white sm:min-h-0 sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-[11px] font-medium leading-snug text-slate-500 sm:text-xs">ได้รับการประเมินแล้ว</span>
               <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm group-hover:scale-110 transition-transform">
                 <i className="fa-solid fa-clipboard-check"></i>
               </div>
@@ -126,9 +126,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
           </div>
 
           {/* Card 3: Passed (Level 2+) */}
-          <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 hover:bg-emerald-50 transition shadow-xs group">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-emerald-800">ผ่านเกณฑ์ (≥ ระดับ 2)</span>
+          <div className="group min-h-28 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3.5 shadow-xs transition hover:bg-emerald-50 sm:min-h-0 sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-[11px] font-semibold leading-snug text-emerald-800 sm:text-xs">ผ่านเกณฑ์ (≥ ระดับ 2)</span>
               <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm group-hover:scale-110 transition-transform shadow-xs">
                 <i className="fa-solid fa-circle-check"></i>
               </div>
@@ -147,9 +147,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
           </div>
 
           {/* Card 4: Pending Clinics */}
-          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 hover:bg-amber-50 transition shadow-xs group">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-amber-800">รอการประเมิน / ปรับปรุง</span>
+          <div className="group min-h-28 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 shadow-xs transition hover:bg-amber-50 sm:min-h-0 sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-[11px] font-semibold leading-snug text-amber-800 sm:text-xs">รอการประเมิน / ปรับปรุง</span>
               <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center text-sm group-hover:scale-110 transition-transform shadow-xs">
                 <i className="fa-solid fa-clock text-sm"></i>
               </div>
@@ -169,7 +169,7 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
         </div>
 
         {/* Provincial Target Progress Gauge Bar — always uses a true 0–100% scale */}
-        <div className="mt-6 border-t border-slate-100 pt-5">
+        <div className="mt-5 border-t border-slate-100 pt-4 sm:mt-6 sm:pt-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -228,7 +228,7 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
         </div>
 
         {/* District Selection Pills Bar */}
-        <div className="mt-6 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-t border-slate-100 pt-3">
+        <div className="mt-5 flex items-center gap-1.5 overflow-x-auto border-t border-slate-100 pb-1 pt-3 scrollbar-none sm:mt-6">
           <span className="text-xs font-semibold text-slate-500 shrink-0 mr-1 flex items-center gap-1">
             <i className="fa-solid fa-filter text-emerald-600"></i>
             <span>เลือกอำเภอ:</span>

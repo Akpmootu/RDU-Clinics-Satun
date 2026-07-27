@@ -340,7 +340,7 @@ export default function App() {
       {/* Main Layout Container */}
       <div className={activeTab === 'landing'
         ? 'flex-1 w-full'
-        : 'relative mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6 lg:px-8'
+        : 'relative mx-auto flex w-full max-w-7xl flex-1 gap-4 px-3 py-3 sm:gap-5 sm:px-5 sm:py-5 lg:gap-6 lg:px-8 lg:py-6'
       }>
 
         {/* Gemini-Style Sidebar Drawer */}
@@ -371,7 +371,7 @@ export default function App() {
         {/* Primary Page Content Area */}
         <main className={activeTab === 'landing'
           ? 'w-full flex-1'
-          : 'w-full flex-1 space-y-6 overflow-hidden pb-20 md:pb-8'
+          : 'w-full min-w-0 flex-1 space-y-4 overflow-hidden pb-24 sm:space-y-5 sm:pb-28 lg:space-y-6 lg:pb-8'
         }>
           
           {/* Syncing Indicator Banner */}
@@ -396,7 +396,7 @@ export default function App() {
 
           {/* Tab 1: Overview Dashboard (Executive Header + District Cards + DataTables preview) */}
           {activeTab === 'dashboard' && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
               <ProvincialKpiHeader
                 summary={summary}
                 selectedDistrict={selectedDistrict}
@@ -426,7 +426,7 @@ export default function App() {
 
           {/* Tab 2: District Breakdown Cards Only */}
           {activeTab === 'cards' && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
               <DistrictCardsGrid
                 districtSummaries={summary.districtSummaries}
                 clinics={clinics}
@@ -439,7 +439,7 @@ export default function App() {
 
           {/* Tab 3: DataTables Master Table */}
           {activeTab === 'clinics' && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
               <DataTableView
                 clinics={clinics}
                 selectedDistrict={selectedDistrict}
@@ -453,14 +453,14 @@ export default function App() {
 
           {/* Tab 4: Visual Analytics & Charts */}
           {activeTab === 'charts' && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
               <ChartsView summary={summary} clinics={clinics} />
             </div>
           )}
 
           {/* Tab 5: Audit Trail Logs */}
           {activeTab === 'audit-logs' && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
               <AuditLogView logs={logs} />
             </div>
           )}
@@ -480,7 +480,9 @@ export default function App() {
       )}
 
       {/* Official Footer */}
-      <Footer />
+      <div className={activeTab === 'landing' ? 'block' : 'hidden lg:block'}>
+        <Footer />
+      </div>
 
       {/* Admin Authentication Modal */}
       <AdminLoginModal
