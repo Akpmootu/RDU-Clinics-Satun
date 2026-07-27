@@ -135,15 +135,15 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   return (
     <section className="space-y-4">
       {/* Header Title & Export Tools */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shadow-xs">
+      <div className="flex flex-col justify-between gap-3 rounded-[1.4rem] border border-slate-200/80 bg-white p-4 shadow-xs md:flex-row md:items-center md:rounded-2xl">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-lg font-bold text-white shadow-xs">
             <i className="fa-solid fa-table"></i>
           </div>
-          <div>
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>ฐานข้อมูลคลินิกเอกชน จังหวัดสตูล</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-2 text-sm font-bold leading-snug text-slate-900 sm:text-base">
+              <span className="min-w-0">ฐานข้อมูลคลินิกเอกชน จังหวัดสตูล</span>
+              <span className="hidden shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 sm:inline">
                  DataTables
               </span>
             </h3>
@@ -153,10 +153,10 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
           <button
             onClick={exportCSV}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition border border-slate-200"
+            className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
             aria-label="ส่งออก CSV"
           >
             <i className="fa-solid fa-file-csv text-emerald-600 text-sm"></i>
@@ -165,7 +165,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
 
           <button
             onClick={() => window.print()}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition border border-slate-200 no-print"
+            className="no-print flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
             aria-label="พิมพ์รายงาน"
           >
             <i className="fa-solid fa-print text-slate-600 text-sm"></i>
@@ -175,7 +175,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
       </div>
 
       {/* Filter Control Panel Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="grid grid-cols-1 gap-3 rounded-[1.4rem] border border-slate-200 bg-white p-4 shadow-xs min-[390px]:grid-cols-2 lg:grid-cols-4 lg:rounded-2xl">
         
         {/* District Filter */}
         <div>
@@ -189,7 +189,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
               setSelectedDistrict(e.target.value as DistrictName | 'ทั้งหมด');
               setCurrentPage(1);
             }}
-            className="w-full text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs transition focus:border-emerald-500 focus:bg-white focus:outline-none"
           >
             <option value="ทั้งหมด">ทั้งหมด (7 อำเภอ)</option>
             {SATUN_DISTRICTS.map((d) => (
@@ -210,7 +210,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
               setStatusFilter(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs transition focus:border-emerald-500 focus:bg-white focus:outline-none"
           >
             <option value="ทั้งหมด">ทั้งหมด</option>
             <option value="ประเมินแล้ว">ประเมินแล้ว</option>
@@ -230,7 +230,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
               setLevelFilter(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs transition focus:border-emerald-500 focus:bg-white focus:outline-none"
           >
             <option value="ทั้งหมด">ทุกระดับ</option>
             <option value="2+">ผ่านเกณฑ์ (ระดับ 2 ขึ้นไป)</option>
@@ -253,7 +253,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
               setTypeFilter(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full text-xs p-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs transition focus:border-emerald-500 focus:bg-white focus:outline-none"
           >
             <option value="ทั้งหมด">ประเภททั้งหมด</option>
             {uniqueTypes.map((type) => (
@@ -265,8 +265,96 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
       </div>
 
       {/* Main Responsive Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="overflow-hidden rounded-[1.4rem] border-0 border-slate-200 bg-transparent shadow-none lg:rounded-2xl lg:border lg:bg-white lg:shadow-xs">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
+          {paginatedClinics.length === 0 ? (
+            <div className="flex min-h-56 flex-col items-center justify-center rounded-[1.4rem] border border-dashed border-slate-300 bg-white p-6 text-center sm:col-span-2">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                <i className="fa-solid fa-folder-open text-lg"></i>
+              </span>
+              <p className="mt-3 text-sm font-bold text-slate-700">ไม่พบข้อมูลคลินิก</p>
+              <p className="mt-1 text-xs text-slate-400">ลองเปลี่ยนตัวกรองหรือคำค้นหา</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDistrict('ทั้งหมด');
+                  setStatusFilter('ทั้งหมด');
+                  setLevelFilter('ทั้งหมด');
+                  setTypeFilter('ทั้งหมด');
+                  setSearchTerm('');
+                }}
+                className="mt-4 min-h-11 rounded-xl bg-emerald-50 px-4 text-xs font-bold text-emerald-700"
+              >
+                ล้างเงื่อนไขทั้งหมด
+              </button>
+            </div>
+          ) : (
+            paginatedClinics.map((clinic, index) => {
+              const isAssessed = clinic.assessmentStatus === 'ประเมินแล้ว';
+              const isPassed = clinic.assessmentLevel !== null && clinic.assessmentLevel >= 2;
+
+              return (
+                <article
+                  key={clinic.id}
+                  className="rounded-[1.4rem] border border-slate-200 bg-white p-4 shadow-xs"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-xs font-black text-slate-500">
+                      {(currentPage - 1) * pageSize + index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
+                          อำเภอ{clinic.district}
+                        </span>
+                        {clinic.assessmentLevel !== null && (
+                          <span className={`rounded-lg border px-2 py-1 text-[10px] font-black ${
+                            isPassed
+                              ? 'border-emerald-600 bg-emerald-500 text-white'
+                              : 'border-rose-200 bg-rose-100 text-rose-800'
+                          }`}>
+                            ระดับ {clinic.assessmentLevel}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="mt-2 text-sm font-extrabold leading-snug text-slate-900">
+                        {clinic.name}
+                      </h4>
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                        {clinic.type} • ผู้รับอนุญาต {clinic.licensee}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                    {isAssessed ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1.5 text-[10px] font-bold text-emerald-800">
+                        <i className="fa-solid fa-circle-check text-emerald-600"></i>
+                        ประเมินแล้ว
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] font-medium text-amber-800">
+                        <i className="fa-solid fa-hourglass-half text-amber-500"></i>
+                        รอประเมิน
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onSelectClinicToEdit(clinic)}
+                      className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-600/20"
+                      aria-label={`ดูรายละเอียด ${clinic.name}`}
+                    >
+                      <span>ดูรายละเอียด</span>
+                      <i className="fa-solid fa-chevron-right text-[9px]"></i>
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto lg:block">
           <table className="w-full text-left border-collapse text-xs sm:text-sm">
             
             {/* Table Header */}
@@ -464,9 +552,9 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
         </div>
 
         {/* Pagination Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+        <div className="mt-3 flex flex-col items-center justify-between gap-3 rounded-[1.4rem] border border-slate-200 bg-white p-4 text-xs text-slate-600 sm:flex-row lg:mt-0 lg:rounded-none lg:border-x-0 lg:border-b-0 lg:bg-slate-50">
           
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto sm:justify-start">
             <span>แสดงแถวต่อหน้า:</span>
             <select
               value={pageSize}
@@ -474,7 +562,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
                 setPageSize(parseInt(e.target.value));
                 setCurrentPage(1);
               }}
-              className="p-1 rounded-lg bg-white border border-slate-200 focus:outline-none"
+              className="h-10 rounded-lg border border-slate-200 bg-white px-2 focus:outline-none"
             >
               <option value={5}>5 แถว</option>
               <option value={10}>10 แถว</option>
@@ -486,11 +574,11 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex w-full items-center justify-center gap-1 sm:w-auto">
             <button
               onClick={() => setCurrentPage(1)}
               disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="หน้าแรก"
             >
               <i className="fa-solid fa-angles-left text-xs"></i>
@@ -498,7 +586,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
             <button
               onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
               disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="หน้าก่อนหน้า"
             >
               <i className="fa-solid fa-chevron-left text-xs"></i>
@@ -511,7 +599,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
             <button
               onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="หน้าถัดไป"
             >
               <i className="fa-solid fa-chevron-right text-xs"></i>
@@ -519,7 +607,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
             <button
               onClick={() => setCurrentPage(totalPages)}
               disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="หน้าสุดท้าย"
             >
               <i className="fa-solid fa-angles-right text-xs"></i>

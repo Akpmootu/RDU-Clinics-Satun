@@ -36,6 +36,13 @@ export const Header: React.FC<HeaderProps> = ({
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const isSuperAdmin =
     currentUser?.role === 'super_admin' && currentUser.status === 'active';
+  const activeTabLabel: Record<string, string> = {
+    dashboard: 'แดชบอร์ดภาพรวม',
+    cards: 'สรุปรายอำเภอ',
+    clinics: 'ข้อมูลคลินิก',
+    charts: 'กราฟและสถิติ',
+    'audit-logs': 'ประวัติการแก้ไข',
+  };
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -61,14 +68,14 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-xs backdrop-blur-md">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+    <header className="app-header sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto max-w-7xl px-3 sm:px-5 lg:px-8">
+        <div className="flex h-16 items-center justify-between gap-2 sm:h-[4.5rem] sm:gap-3 lg:h-16">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3 lg:flex-initial">
             <button
               type="button"
               onClick={() => setSidebarOpen((prev) => !prev)}
-              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 lg:h-10 lg:w-10 lg:rounded-xl"
               aria-label={sidebarOpen ? 'ปิดแถบเมนูหลัก' : 'เปิดแถบเมนูหลัก'}
               aria-expanded={sidebarOpen}
             >
@@ -82,31 +89,32 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               type="button"
-              className="flex min-w-0 items-center gap-2 text-left sm:gap-2.5"
+              className="flex min-w-0 flex-1 items-center gap-2 text-left sm:gap-2.5 lg:flex-initial"
               onClick={() => setActiveTab('landing')}
               aria-label="กลับหน้าหลัก"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-600/20 sm:h-10 sm:w-10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-600/20 sm:h-11 sm:w-11 lg:h-10 lg:w-10 lg:rounded-xl">
                 <i className="fa-solid fa-pills text-lg sm:text-xl"></i>
               </span>
-              <span className="hidden min-w-0 flex-col justify-center xs:flex sm:flex">
-                <span className="flex items-center gap-1.5">
-                  <span className="whitespace-nowrap text-sm font-bold leading-tight text-slate-900 sm:text-base lg:text-lg">
+              <span className="flex min-w-0 flex-col justify-center">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[13px] font-extrabold leading-tight text-slate-900 min-[360px]:text-sm sm:text-base lg:whitespace-nowrap lg:text-lg">
                     RDU Clinics <span className="font-extrabold text-emerald-600">Satun</span>
                   </span>
-                  <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  <span className="hidden shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 min-[390px]:inline-flex sm:text-[10px]">
                     2569
                   </span>
                 </span>
-                <span className="hidden items-center gap-1 truncate text-[10px] text-slate-500 sm:flex lg:text-xs">
-                  <i className="fa-solid fa-hospital text-[9px] text-emerald-500"></i>
-                  สำนักงานสาธารณสุขจังหวัดสตูล
+                <span className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[9px] font-medium text-slate-500 min-[390px]:text-[10px] lg:text-xs">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"></span>
+                  <span className="truncate lg:hidden">{activeTabLabel[activeTab] || 'ระบบติดตาม RDU จังหวัดสตูล'}</span>
+                  <span className="hidden truncate lg:inline">สำนักงานสาธารณสุขจังหวัดสตูล</span>
                 </span>
               </span>
             </button>
           </div>
 
-          <div className="mx-2 hidden max-w-md flex-1 items-center gap-2 md:flex">
+          <div className="mx-2 hidden max-w-md flex-1 items-center gap-2 lg:flex">
             <button
               type="button"
               onClick={() => setActiveTab('landing')}
@@ -142,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <div
               className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 lg:flex"
               title={settings.isLiveApiActive ? 'เชื่อมต่อ Google Sheets แล้ว' : 'กำลังใช้ข้อมูลสำรองในเครื่อง'}
@@ -158,11 +166,11 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   type="button"
                   onClick={() => setAccountMenuOpen((open) => !open)}
-                  className="flex h-10 max-w-[210px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 text-left shadow-xs transition hover:border-emerald-300 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="flex h-11 max-w-[210px] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2 text-left shadow-xs transition hover:border-emerald-300 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 lg:h-10 lg:rounded-xl"
                   aria-expanded={accountMenuOpen}
                   aria-haspopup="menu"
                 >
-                  <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-900 text-white">
+                  <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-900 text-white lg:h-7 lg:w-7 lg:rounded-lg">
                     {currentUser?.avatarUrl ? (
                       <img src={currentUser.avatarUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
@@ -172,7 +180,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-white"></span>
                     )}
                   </span>
-                  <span className="hidden min-w-0 sm:block">
+                  <span className="hidden min-w-0 md:block">
                     <span className="block truncate text-xs font-bold text-slate-900">
                       {currentUser?.name || 'Admin'}
                     </span>
@@ -180,13 +188,13 @@ export const Header: React.FC<HeaderProps> = ({
                       {isSuperAdmin ? 'Super Admin' : 'Admin'}
                     </span>
                   </span>
-                  <i className={`fa-solid fa-chevron-down hidden text-[9px] text-slate-400 transition sm:block ${accountMenuOpen ? 'rotate-180' : ''}`}></i>
+                  <i className={`fa-solid fa-chevron-down hidden text-[9px] text-slate-400 transition md:block ${accountMenuOpen ? 'rotate-180' : ''}`}></i>
                 </button>
 
                 {accountMenuOpen && (
                   <div
                     role="menu"
-                    className="absolute right-0 top-[calc(100%+0.5rem)] w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    className="absolute right-0 top-[calc(100%+0.5rem)] w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
                   >
                     <div className="rounded-xl bg-slate-900 p-3 text-white">
                       <p className="truncate text-sm font-bold">{currentUser?.name || 'Admin'}</p>
@@ -254,11 +262,11 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => onOpenAdminLogin('register')}
-                  className="flex h-9 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                  className="hidden h-10 w-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 min-[360px]:flex sm:w-auto sm:px-2.5"
                   title="ลงทะเบียนเจ้าหน้าที่"
                 >
                   <i className="fa-solid fa-user-plus text-emerald-600"></i>
@@ -267,7 +275,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenAdminLogin('login')}
-                  className="flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
+                  className="flex h-10 w-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 sm:w-auto sm:px-2.5"
                   title="เข้าสู่ระบบเจ้าหน้าที่"
                 >
                   <i className="fa-solid fa-right-to-bracket text-slate-500"></i>
@@ -278,27 +286,40 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <div className="pb-3 md:hidden">
-          <div className="relative">
-            <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400"></i>
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="ค้นหาชื่อคลินิก, ผู้รับอนุญาต..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-100 py-2 pl-9 pr-9 text-xs focus:border-emerald-500 focus:bg-white focus:outline-none"
-              aria-label="ค้นหาคลินิกมือถือ"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400"
-                aria-label="ล้างคำค้นหา"
-              >
-                <i className="fa-solid fa-circle-xmark text-xs"></i>
-              </button>
-            )}
+        <div className="pb-2.5 lg:hidden">
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400"></i>
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="ค้นหาชื่อคลินิก, ผู้รับอนุญาต..."
+                className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-100 py-2 pl-9 pr-9 text-xs transition focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                aria-label="ค้นหาคลินิกมือถือ"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400"
+                  aria-label="ล้างคำค้นหา"
+                >
+                  <i className="fa-solid fa-circle-xmark text-xs"></i>
+                </button>
+              )}
+            </div>
+            <div
+              className={`flex h-10 shrink-0 items-center gap-1.5 rounded-2xl border px-3 text-[10px] font-bold ${
+                settings.isLiveApiActive
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-amber-200 bg-amber-50 text-amber-700'
+              }`}
+              title={settings.isLiveApiActive ? 'เชื่อมต่อ Google Sheets แล้ว' : 'กำลังใช้ข้อมูลสำรองในเครื่อง'}
+            >
+              <span className={`h-2 w-2 rounded-full ${settings.isLiveApiActive ? 'animate-pulse bg-emerald-500' : 'bg-amber-500'}`}></span>
+              <span className="hidden sm:inline">{settings.isLiveApiActive ? 'Sheets Live' : 'Local Data'}</span>
+            </div>
           </div>
         </div>
       </div>

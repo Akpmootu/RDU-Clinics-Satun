@@ -26,18 +26,18 @@ export const DistrictCardsGrid: React.FC<DistrictCardsGridProps> = ({
     : districtSummaries.filter((d) => d.district === selectedDistrict);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-3 sm:space-y-4">
       {/* Section Title */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">
+      <div className="flex items-center justify-between px-1">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-sm font-bold text-emerald-700">
             <i className="fa-solid fa-map-location-dot"></i>
           </div>
-          <div>
-            <h3 className="text-lg font-bold text-slate-900">
+          <div className="min-w-0">
+            <h3 className="text-base font-bold leading-snug text-slate-900 sm:text-lg">
               สถานะการประเมินแยกรายอำเภอ (7 อำเภอในจังหวัดสตูล)
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 sm:text-xs">
               แสดงสถิติและแท็กสถานะคลินิกเอกชนแต่ละอำเภอ สามารถคลิกรายละเอียดเพื่อดูรายชื่อทั้งอำเภอได้
             </p>
           </div>
@@ -45,7 +45,7 @@ export const DistrictCardsGrid: React.FC<DistrictCardsGridProps> = ({
       </div>
 
       {/* Cards Grid Container */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
         {filteredSummaries.map((summary) => {
           const districtClinics = clinics.filter((c) => c.district === summary.district);
           const isTargetAchieved = summary.isTargetAchieved;
@@ -53,7 +53,7 @@ export const DistrictCardsGrid: React.FC<DistrictCardsGridProps> = ({
           return (
             <div
               key={summary.district}
-              className={`rounded-2xl border bg-white p-5 shadow-xs transition-all duration-300 hover:shadow-md hover:-translate-y-1 relative flex flex-col justify-between ${
+              className={`relative flex flex-col justify-between rounded-[1.4rem] border bg-white p-4 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-md sm:rounded-2xl sm:p-5 ${
                 isTargetAchieved
                   ? 'border-emerald-200/90 hover:border-emerald-300'
                   : 'border-slate-200/90 hover:border-slate-300'
@@ -61,15 +61,15 @@ export const DistrictCardsGrid: React.FC<DistrictCardsGridProps> = ({
             >
               {/* Card Header: District Name & Target Achievement Badge */}
               <div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2.5">
+                <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-xs ${
                       isTargetAchieved ? 'bg-emerald-600' : 'bg-slate-700'
                     }`}>
                       <i className="fa-solid fa-building-user text-sm"></i>
                     </div>
-                    <div>
-                      <h4 className="text-base font-extrabold text-slate-900">
+                    <div className="min-w-0">
+                      <h4 className="truncate text-base font-extrabold text-slate-900">
                         อำเภอ{summary.district}
                       </h4>
                       <p className="text-[11px] text-slate-400 font-medium">
@@ -80,12 +80,12 @@ export const DistrictCardsGrid: React.FC<DistrictCardsGridProps> = ({
 
                   {/* Pass Status Tag */}
                   {isTargetAchieved ? (
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-800 sm:px-2.5 sm:text-[11px]">
                       <i className="fa-solid fa-circle-check text-emerald-600 text-xs"></i>
                       <span>ผ่านเกณฑ์ 25%</span>
                     </span>
                   ) : (
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-800 sm:px-2.5 sm:text-[11px]">
                       <i className="fa-solid fa-clock text-amber-500 text-xs"></i>
                       <span>กำลังประเมิน</span>
                     </span>
@@ -93,9 +93,9 @@ export const DistrictCardsGrid: React.FC<DistrictCardsGridProps> = ({
                 </div>
 
                 {/* Localized Metrics Summary */}
-                <div className="grid grid-cols-4 gap-2 my-4 text-center">
-                  <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="block text-[10px] text-slate-500 font-medium">เป้าหมาย</span>
+                <div className="my-4 grid grid-cols-2 gap-2 text-center min-[400px]:grid-cols-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-2">
+                    <span className="block text-[10px] font-medium text-slate-500">เป้าหมาย</span>
                     <span className="text-base font-extrabold text-slate-800">{summary.totalClinics}</span>
                   </div>
                   <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
