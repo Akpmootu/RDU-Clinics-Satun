@@ -59,6 +59,15 @@
 - **`active`**: ผ่านการอนุมัติ สามารถเข้าใช้งาน Admin Dashboard ได้
 - **`suspended`**: ถูกระงับการใช้งาน แสดงหน้าแจ้งเตือนการระงับสิทธิ์
 
+ข้อมูลบัญชีถูกเก็บในแท็บ **`SystemUsers`** ของ Google Sheet และเซิร์ฟเวอร์จะสร้างแท็บนี้ให้อัตโนมัติเมื่อเริ่มใช้งานครั้งแรก:
+
+1. เปิด Google Sheet ที่ใช้กับระบบ
+2. แชร์ให้ `GOOGLE_SERVICE_ACCOUNT_EMAIL` ด้วยสิทธิ์ **Editor**
+3. ตั้งค่า `GOOGLE_SERVICE_ACCOUNT_EMAIL` และ `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` ใน Vercel Production
+4. ห้ามนำ private key หรือ Telegram Bot Token ใส่ใน GitHub
+
+การอนุมัติ เปลี่ยนสิทธิ์ ระงับ และลบบัญชีจะบันทึกลง Google Sheet ทันที โดยคำสั่งทั้งหมดตรวจสิทธิ์ Super Admin ซ้ำที่เซิร์ฟเวอร์
+
 ---
 
 ## 🚀 4. การรันระบบและการเริ่มทำงาน (Development & Production)
