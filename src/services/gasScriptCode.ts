@@ -337,7 +337,7 @@ function sendTelegramNotification(payload) {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '🌐 เปิดระบบ Dashboard', url: 'https://ais-dev-qpop3zdg3eqmple2e7tmy2-10830053760.asia-southeast1.run.app' }
+            { text: '🌐 เปิดระบบ Dashboard', url: 'https://rdu-clinics-satun.vercel.app' }
           ]
         ]
       }

@@ -32,7 +32,6 @@ import {
   fetchFromGoogleSheet,
   fetchFromGas,
   updateClinicStatusApi,
-  sendOfficerRegistrationTelegramNotification,
 } from './services/api';
 import {
   loadAppUsers,
@@ -154,9 +153,6 @@ export default function App() {
             saveAppUsers(updatedUsers);
             setAppUsers(updatedUsers);
 
-            if (authUser.status === 'pending') {
-              sendOfficerRegistrationTelegramNotification(newPendingUser, loadSettings()).catch(() => {});
-            }
           } else {
             const existingUser = currentUsers[existingIndex];
             // Check if Super Admin approved this user in appUsers locally!
@@ -289,7 +285,7 @@ export default function App() {
     editedBy: string,
     remarks: string
   ) => {
-    const { updatedClinic, newLog } = await updateClinicStatusApi(
+    const { updatedClinic, newLog, telegramSent } = await updateClinicStatusApi(
       clinic,
       newStatus,
       newLevel,
@@ -303,6 +299,7 @@ export default function App() {
       prev.map((c) => (c.id === updatedClinic.id ? updatedClinic : c))
     );
     setLogs((prev) => [newLog, ...prev]);
+    return telegramSent;
   };
 
   const handleSaveSettings = (newSettings: SettingsConfig) => {

@@ -431,6 +431,85 @@ async function loadGoogleSheetData(spreadsheetId = DEFAULT_SPREADSHEET_ID, gid =
   return loadViaPublicCsv(validSpreadsheetId, validGid);
 }
 
+// src/server/telegram.ts
+var DEFAULT_DASHBOARD_URL = "https://rdu-clinics-satun.vercel.app";
+function envValue(name) {
+  const value = process.env[name]?.trim();
+  return value || void 0;
+}
+function telegramConfig() {
+  const botToken = envValue("TELEGRAM_BOT_TOKEN") || envValue("VITE_TELEGRAM_BOT_TOKEN");
+  const chatId = envValue("TELEGRAM_CHAT_ID") || envValue("VITE_TELEGRAM_CHAT_ID");
+  if (!botToken || !chatId) {
+    throw new Error("\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E44\u0E14\u0E49\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32 Telegram Bot Token \u0E2B\u0E23\u0E37\u0E2D Chat ID \u0E1A\u0E19\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C");
+  }
+  return { botToken, chatId };
+}
+function telegramDashboardUrl() {
+  const configuredUrl = envValue("DASHBOARD_URL");
+  if (!configuredUrl) return DEFAULT_DASHBOARD_URL;
+  try {
+    const url = new URL(configuredUrl);
+    return url.protocol === "https:" ? url.toString().replace(/\/$/, "") : DEFAULT_DASHBOARD_URL;
+  } catch {
+    return DEFAULT_DASHBOARD_URL;
+  }
+}
+function escapeTelegramHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function buildClinicUpdateMessage(notification) {
+  const levelText = notification.assessmentLevel !== null ? `\u0E23\u0E30\u0E14\u0E31\u0E1A ${notification.assessmentLevel} \u2B50` : "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E30\u0E1A\u0E38";
+  const passText = notification.assessmentLevel !== null && notification.assessmentLevel >= 2 ? "\u2705 \u0E1C\u0E48\u0E32\u0E19\u0E40\u0E01\u0E13\u0E11\u0E4C (\u2265\u0E23\u0E30\u0E14\u0E31\u0E1A 2)" : "\u23F3 \u0E23\u0E2D\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19/\u0E1B\u0E23\u0E31\u0E1A\u0E1B\u0E23\u0E38\u0E07";
+  return `\u{1F514} <b>[\u0E41\u0E08\u0E49\u0E07\u0E40\u0E15\u0E37\u0E2D\u0E19\u0E01\u0E32\u0E23\u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15 RDU \u0E04\u0E25\u0E34\u0E19\u0E34\u0E01\u0E40\u0E2D\u0E01\u0E0A\u0E19 \u0E2A\u0E15\u0E39\u0E25]</b>
+
+\u{1F3E5} <b>\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01:</b> ${escapeTelegramHtml(notification.clinicName)}
+\u{1F4CD} <b>\u0E2D\u0E33\u0E40\u0E20\u0E2D:</b> ${escapeTelegramHtml(notification.district)}
+\u{1F4CA} <b>\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19:</b> ${escapeTelegramHtml(notification.assessmentStatus)}
+\u2B50 <b>\u0E23\u0E30\u0E14\u0E31\u0E1A\u0E17\u0E35\u0E48\u0E44\u0E14\u0E49:</b> ${escapeTelegramHtml(levelText)}
+\u{1F3AF} <b>\u0E1C\u0E25\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19:</b> ${escapeTelegramHtml(passText)}
+\u{1F464} <b>\u0E1C\u0E39\u0E49\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01:</b> ${escapeTelegramHtml(notification.editedBy)}
+\u{1F4DD} <b>\u0E2B\u0E21\u0E32\u0E22\u0E40\u0E2B\u0E15\u0E38:</b> ${escapeTelegramHtml(notification.remarks)}
+
+\u{1F5D3}\uFE0F <b>\u0E40\u0E27\u0E25\u0E32\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01:</b> ${escapeTelegramHtml(notification.timestamp)} \u0E19.`;
+}
+function dashboardReplyMarkup() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "\u{1F310} \u0E40\u0E1B\u0E34\u0E14\u0E23\u0E30\u0E1A\u0E1A Dashboard",
+          url: telegramDashboardUrl()
+        }
+      ]
+    ]
+  };
+}
+async function sendTelegramMessage(text, parseMode) {
+  const { botToken, chatId } = telegramConfig();
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: parseMode,
+      disable_web_page_preview: true,
+      reply_markup: dashboardReplyMarkup()
+    })
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.ok) {
+    throw new Error(
+      json?.description || `Telegram Bot API \u0E15\u0E2D\u0E1A\u0E01\u0E25\u0E31\u0E1A HTTP ${response.status}`
+    );
+  }
+  return { messageId: json.result?.message_id ?? null };
+}
+async function sendClinicUpdateNotification(notification) {
+  return sendTelegramMessage(buildClinicUpdateMessage(notification), "HTML");
+}
+
 // src/server/app.ts
 var app = express();
 var SESSION_COOKIE = "satun_admin_token";
@@ -442,7 +521,7 @@ app.use(express.urlencoded({ extended: true }));
 function isProduction() {
   return process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 }
-function envValue(name) {
+function envValue2(name) {
   const value = process.env[name]?.trim();
   return value || void 0;
 }
@@ -467,22 +546,22 @@ function parseCookies(req) {
 }
 function providerConfig(provider) {
   if (provider === "google") {
-    const clientId2 = envValue("GOOGLE_CLIENT_ID");
-    const clientSecret2 = envValue("GOOGLE_CLIENT_SECRET");
+    const clientId2 = envValue2("GOOGLE_CLIENT_ID");
+    const clientSecret2 = envValue2("GOOGLE_CLIENT_SECRET");
     if (!clientId2 || !clientSecret2) return null;
     return {
       clientId: clientId2,
       clientSecret: clientSecret2,
-      redirectUri: envValue("GOOGLE_REDIRECT_URI") || "https://rdu-clinics-satun.vercel.app/api/auth/google/callback"
+      redirectUri: envValue2("GOOGLE_REDIRECT_URI") || "https://rdu-clinics-satun.vercel.app/api/auth/google/callback"
     };
   }
-  const clientId = envValue("LINE_CHANNEL_ID");
-  const clientSecret = envValue("LINE_CHANNEL_SECRET");
+  const clientId = envValue2("LINE_CHANNEL_ID");
+  const clientSecret = envValue2("LINE_CHANNEL_SECRET");
   if (!clientId || !clientSecret) return null;
   return {
     clientId,
     clientSecret,
-    redirectUri: envValue("LINE_REDIRECT_URI") || "https://rdu-clinics-satun.vercel.app/api/auth/line/callback"
+    redirectUri: envValue2("LINE_REDIRECT_URI") || "https://rdu-clinics-satun.vercel.app/api/auth/line/callback"
   };
 }
 function oauthCookieName(provider) {
@@ -652,24 +731,15 @@ var DEFAULT_SERVER_USERS = [
 ];
 var globalServerUsers = [...DEFAULT_SERVER_USERS];
 async function sendServerTelegramNotification(text) {
-  const botToken = process.env.VITE_TELEGRAM_BOT_TOKEN || "8642457774:AAEssByKIIelsFpDnkz9ridr-IT--J2Ap9I";
-  const chatId = process.env.VITE_TELEGRAM_CHAT_ID || "-5319646324";
-  if (!botToken || !chatId) return;
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "Markdown"
-      })
-    });
+    await sendTelegramMessage(text, "Markdown");
+    return true;
   } catch (err) {
     console.warn("Server Telegram notification failed:", err);
+    return false;
   }
 }
-function registerOrFindOAuthUser(provider, identifier, displayName) {
+async function registerOrFindOAuthUser(provider, identifier, displayName) {
   const cleanId = identifier.trim().toLowerCase();
   const envAdmin = provider === "google" ? findGoogleAdmin(cleanId, displayName) : findLineAdmin(cleanId, displayName);
   if (envAdmin) return envAdmin;
@@ -702,7 +772,7 @@ function registerOrFindOAuthUser(provider, identifier, displayName) {
   };
   globalServerUsers.unshift(newPendingUser);
   const nowStr = (/* @__PURE__ */ new Date()).toLocaleString("th-TH");
-  sendServerTelegramNotification(
+  await sendServerTelegramNotification(
     `\u{1F514} *[\u0E41\u0E08\u0E49\u0E07\u0E40\u0E15\u0E37\u0E2D\u0E19\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48\u0E43\u0E2B\u0E21\u0E48\u0E25\u0E07\u0E17\u0E30\u0E40\u0E1A\u0E35\u0E22\u0E19\u0E40\u0E02\u0E49\u0E32\u0E43\u0E0A\u0E49\u0E07\u0E32\u0E19]*
 
 \u{1F464} *\u0E0A\u0E37\u0E48\u0E2D-\u0E19\u0E32\u0E21\u0E2A\u0E01\u0E38\u0E25:* ${newPendingUser.name}
@@ -711,8 +781,7 @@ function registerOrFindOAuthUser(provider, identifier, displayName) {
 \u23F3 *\u0E2A\u0E16\u0E32\u0E19\u0E30:* \u0E23\u0E2D\u0E01\u0E32\u0E23\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E08\u0E32\u0E01 Super Admin
 
 \u{1F5D3}\uFE0F *\u0E40\u0E27\u0E25\u0E32\u0E25\u0E07\u0E17\u0E30\u0E40\u0E1A\u0E35\u0E22\u0E19:* ${nowStr} \u0E19.`
-  ).catch(() => {
-  });
+  );
   return {
     id: newPendingUser.id,
     emailOrId: newPendingUser.emailOrId,
@@ -777,6 +846,51 @@ app.get("/api/google-sheet", async (req, res) => {
     });
   }
 });
+app.post("/api/telegram/clinic-update", async (req, res) => {
+  const user = readSession(req);
+  const isAuthorized = user?.status === "active" && (user.role === "admin" || user.role === "super_admin");
+  if (!isAuthorized) {
+    return res.status(401).json({
+      status: "error",
+      code: "AUTH_REQUIRED",
+      message: "\u0E01\u0E23\u0E38\u0E13\u0E32\u0E40\u0E02\u0E49\u0E32\u0E2A\u0E39\u0E48\u0E23\u0E30\u0E1A\u0E1A\u0E14\u0E49\u0E27\u0E22\u0E1A\u0E31\u0E0D\u0E0A\u0E35\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48\u0E01\u0E48\u0E2D\u0E19\u0E2A\u0E48\u0E07\u0E01\u0E32\u0E23\u0E41\u0E08\u0E49\u0E07\u0E40\u0E15\u0E37\u0E2D\u0E19"
+    });
+  }
+  const clinic = req.body?.clinic;
+  const log = req.body?.log;
+  if (!clinic || !log || typeof clinic.name !== "string" || typeof clinic.district !== "string" || typeof clinic.assessmentStatus !== "string" || typeof log.editedBy !== "string" || typeof log.remarks !== "string" || typeof log.timestamp !== "string") {
+    return res.status(400).json({
+      status: "error",
+      code: "INVALID_NOTIFICATION",
+      message: "\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E2A\u0E48\u0E07 Telegram \u0E44\u0E21\u0E48\u0E04\u0E23\u0E1A\u0E16\u0E49\u0E27\u0E19"
+    });
+  }
+  const assessmentLevel = typeof clinic.assessmentLevel === "number" ? clinic.assessmentLevel : null;
+  try {
+    const result = await sendClinicUpdateNotification({
+      clinicName: clinic.name.slice(0, 500),
+      district: clinic.district.slice(0, 100),
+      assessmentStatus: clinic.assessmentStatus.slice(0, 100),
+      assessmentLevel,
+      editedBy: log.editedBy.slice(0, 500),
+      remarks: log.remarks.slice(0, 1e3),
+      timestamp: log.timestamp.slice(0, 100)
+    });
+    return res.json({
+      status: "success",
+      telegramSent: true,
+      messageId: result.messageId
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "\u0E44\u0E21\u0E48\u0E2A\u0E32\u0E21\u0E32\u0E23\u0E16\u0E2A\u0E48\u0E07 Telegram \u0E44\u0E14\u0E49";
+    console.error("Clinic Telegram notification failed", error);
+    return res.status(502).json({
+      status: "error",
+      code: "TELEGRAM_SEND_FAILED",
+      message
+    });
+  }
+});
 app.get("/api/auth/google", (_req, res) => {
   const config = providerConfig("google");
   if (!config || !isJwtConfigured()) {
@@ -834,7 +948,7 @@ app.get("/api/auth/google/callback", async (req, res) => {
     if (!userResponse.ok || !email || user.verified_email === false) {
       throw new Error("google_verified_email_missing");
     }
-    const record = registerOrFindOAuthUser("google", email, user.name || email);
+    const record = await registerOrFindOAuthUser("google", email, user.name || email);
     issueSession(res, record);
     return redirectToLogin(
       res,
@@ -905,7 +1019,7 @@ app.get("/api/auth/line/callback", async (req, res) => {
     if (!userResponse.ok || !userId) {
       throw new Error("line_user_id_missing");
     }
-    const record = registerOrFindOAuthUser("line", userId, user.name || "LINE User");
+    const record = await registerOrFindOAuthUser("line", userId, user.name || "LINE User");
     issueSession(res, record);
     return redirectToLogin(
       res,
@@ -923,7 +1037,7 @@ app.get("/api/users", (_req, res) => {
     users: globalServerUsers
   });
 });
-app.post("/api/users/register", (req, res) => {
+app.post("/api/users/register", async (req, res) => {
   const { firstName, lastName, position, workGroup, affiliation, phone, emailOrId, provider } = req.body || {};
   if (!emailOrId || !provider) {
     return res.status(400).json({ status: "error", message: "\u0E01\u0E23\u0E38\u0E13\u0E32\u0E23\u0E30\u0E1A\u0E38\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E43\u0E2B\u0E49\u0E04\u0E23\u0E1A\u0E16\u0E49\u0E27\u0E19" });
@@ -952,7 +1066,7 @@ app.post("/api/users/register", (req, res) => {
   };
   globalServerUsers.unshift(newUser);
   const nowStr = (/* @__PURE__ */ new Date()).toLocaleString("th-TH");
-  sendServerTelegramNotification(
+  await sendServerTelegramNotification(
     `\u{1F514} *[\u0E41\u0E08\u0E49\u0E07\u0E40\u0E15\u0E37\u0E2D\u0E19\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48\u0E43\u0E2B\u0E21\u0E48\u0E25\u0E07\u0E17\u0E30\u0E40\u0E1A\u0E35\u0E22\u0E19\u0E40\u0E02\u0E49\u0E32\u0E43\u0E0A\u0E49\u0E07\u0E32\u0E19]*
 
 \u{1F464} *\u0E0A\u0E37\u0E48\u0E2D-\u0E19\u0E32\u0E21\u0E2A\u0E01\u0E38\u0E25:* ${newUser.name}
@@ -964,15 +1078,14 @@ app.post("/api/users/register", (req, res) => {
 \u23F3 *\u0E2A\u0E16\u0E32\u0E19\u0E30:* \u0E23\u0E2D\u0E01\u0E32\u0E23\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E08\u0E32\u0E01 Super Admin
 
 \u{1F5D3}\uFE0F *\u0E40\u0E27\u0E25\u0E32\u0E25\u0E07\u0E17\u0E30\u0E40\u0E1A\u0E35\u0E22\u0E19:* ${nowStr} \u0E19.`
-  ).catch(() => {
-  });
+  );
   return res.json({
     status: "success",
     user: newUser,
     message: "\u0E25\u0E07\u0E17\u0E30\u0E40\u0E1A\u0E35\u0E22\u0E19\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08"
   });
 });
-app.post("/api/users/approve", (req, res) => {
+app.post("/api/users/approve", async (req, res) => {
   const { userId, emailOrId, status, role } = req.body || {};
   const target = globalServerUsers.find(
     (u) => userId && u.id === userId || emailOrId && u.emailOrId.toLowerCase() === String(emailOrId).toLowerCase()
@@ -984,7 +1097,7 @@ app.post("/api/users/approve", (req, res) => {
   if (role) target.role = role;
   if (status === "active") {
     const nowStr = (/* @__PURE__ */ new Date()).toLocaleString("th-TH");
-    sendServerTelegramNotification(
+    await sendServerTelegramNotification(
       `\u2705 *[\u0E41\u0E08\u0E49\u0E07\u0E40\u0E15\u0E37\u0E2D\u0E19\u0E01\u0E32\u0E23\u0E22\u0E37\u0E19\u0E22\u0E31\u0E19\u0E23\u0E31\u0E1A / \u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48]*
 
 \u{1F464} *\u0E0A\u0E37\u0E48\u0E2D-\u0E19\u0E32\u0E21\u0E2A\u0E01\u0E38\u0E25:* ${target.name}
@@ -994,8 +1107,7 @@ app.post("/api/users/approve", (req, res) => {
 \u{1F7E2} *\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E43\u0E2B\u0E21\u0E48:* \u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E40\u0E02\u0E49\u0E32\u0E43\u0E0A\u0E49\u0E07\u0E32\u0E19\u0E41\u0E25\u0E49\u0E27 (Active)
 
 \u{1F5D3}\uFE0F *\u0E40\u0E27\u0E25\u0E32\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34:* ${nowStr} \u0E19.`
-    ).catch(() => {
-    });
+    );
   }
   return res.json({
     status: "success",

@@ -13,7 +13,7 @@ interface StatusUpdateModalProps {
     newLevel: number | null,
     editedBy: string,
     remarks: string
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   settings: SettingsConfig;
 }
 
@@ -78,7 +78,7 @@ export const StatusUpdateModal: React.FC<StatusUpdateModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      await onSave(
+      const telegramSent = await onSave(
         currentClinic,
         assessmentStatus,
         assessmentStatus === 'ประเมินแล้ว' ? assessmentLevel : null,
@@ -89,7 +89,7 @@ export const StatusUpdateModal: React.FC<StatusUpdateModalProps> = ({
       setIsSubmitting(false);
 
       Swal.fire({
-        icon: 'success',
+        icon: telegramSent ? 'success' : 'warning',
         title: 'บันทึกผลการประเมินสำเร็จ! 🎉',
         html: `
           <div class="text-left text-sm space-y-1">
@@ -97,7 +97,11 @@ export const StatusUpdateModal: React.FC<StatusUpdateModalProps> = ({
             <p><strong>อำเภอ:</strong> ${currentClinic.district}</p>
             <p><strong>สถานะ:</strong> ${assessmentStatus}</p>
             <p><strong>ระดับ:</strong> ${assessmentLevel ? `ระดับ ${assessmentLevel}` : 'ยังไม่กำหนด'}</p>
-            <p class="text-xs text-slate-500 mt-2">✅ ระบบได้บันทึกประวัติลง Audit Log และส่งการแจ้งเตือนไปยังกลุ่ม Telegram เรียบร้อยแล้ว</p>
+            <p class="text-xs text-slate-500 mt-2">${
+              telegramSent
+                ? '✅ ระบบได้บันทึกประวัติลง Audit Log และส่งการแจ้งเตือนไปยังกลุ่ม Telegram เรียบร้อยแล้ว'
+                : '⚠️ บันทึกข้อมูลแล้ว แต่ส่ง Telegram ไม่สำเร็จ กรุณาแจ้งผู้ดูแลระบบ'
+            }</p>
           </div>
         `,
         confirmButtonColor: '#059669',

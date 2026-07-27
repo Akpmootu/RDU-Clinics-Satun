@@ -8,16 +8,13 @@ const LOGS_STORAGE_KEY = 'rdu_satun_logs_v1';
 export const PRESET_GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwXONrK9d6i12UOjUrYiN9t-Nv3ompuh1iFFlm4E4qXqRiRKbVGcgsqJyxncq7g-vxcw/exec';
 export const PRESET_SPREADSHEET_ID = '1yLfjRD0PGXLJpsCyM8F9HsJfgb5gaDLAGhUjiB_eUY4';
 export const PRESET_SHEET_GID = '1062888583';
-export const PRESET_TELEGRAM_BOT_TOKEN = '8642457774:AAEssByKIIelsFpDnkz9ridr-IT--J2Ap9I';
-export const PRESET_TELEGRAM_CHAT_ID = '-5319646324';
-
 const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
 
 export const DEFAULT_SETTINGS: SettingsConfig = {
   gasWebAppUrl: env.VITE_GAS_WEB_APP_URL || PRESET_GAS_WEB_APP_URL,
   spreadsheetId: env.VITE_SPREADSHEET_ID || PRESET_SPREADSHEET_ID,
-  telegramBotToken: env.VITE_TELEGRAM_BOT_TOKEN || PRESET_TELEGRAM_BOT_TOKEN,
-  telegramChatId: env.VITE_TELEGRAM_CHAT_ID || PRESET_TELEGRAM_CHAT_ID,
+  telegramBotToken: '',
+  telegramChatId: '',
   autoSyncInterval: 0,
   isLiveApiActive: true,
 };
@@ -45,8 +42,8 @@ export function loadSettings(): SettingsConfig {
       spreadsheetId: spreadsheetIdIsPlaceholder
         ? DEFAULT_SETTINGS.spreadsheetId
         : savedSpreadsheetId,
-      telegramBotToken: parsed.telegramBotToken?.trim() ? parsed.telegramBotToken.trim() : DEFAULT_SETTINGS.telegramBotToken,
-      telegramChatId: parsed.telegramChatId?.trim() ? parsed.telegramChatId.trim() : DEFAULT_SETTINGS.telegramChatId,
+      telegramBotToken: '',
+      telegramChatId: '',
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -54,7 +51,14 @@ export function loadSettings(): SettingsConfig {
 }
 
 export function saveSettings(settings: SettingsConfig): void {
-  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  localStorage.setItem(
+    SETTINGS_STORAGE_KEY,
+    JSON.stringify({
+      ...settings,
+      telegramBotToken: '',
+      telegramChatId: '',
+    })
+  );
 }
 
 export function loadLocalClinics(): Clinic[] {
@@ -269,8 +273,8 @@ export async function updateClinicStatusApi(
 
       if (response.ok) {
         const resJson = await response.json().catch(() => null);
-        if (resJson && resJson.status === 'success') {
-          telegramSent = true;
+        if (!resJson || resJson.status !== 'success') {
+          console.warn('Google Apps Script did not confirm the clinic update');
         }
       } else {
         console.warn(`GAS HTTP response status: ${response.status}`);
@@ -280,19 +284,12 @@ export async function updateClinicStatusApi(
     }
   }
 
-  // 2. Direct Telegram notification if token & chat_id provided
-  if (!telegramSent && settings.telegramBotToken && settings.telegramChatId) {
-    try {
-      await sendDirectTelegramMessage(
-        settings.telegramBotToken,
-        settings.telegramChatId,
-        updatedClinic,
-        newLog
-      );
-      telegramSent = true;
-    } catch (err) {
-      console.warn('Telegram direct notification failed:', err);
-    }
+  // 2. Send Telegram from our server so the bot token is never exposed to the browser.
+  try {
+    await sendClinicUpdateTelegramNotification(updatedClinic, newLog);
+    telegramSent = true;
+  } catch (err) {
+    console.warn('Telegram server notification failed:', err);
   }
 
   newLog.telegramSent = telegramSent;
@@ -309,132 +306,22 @@ export async function updateClinicStatusApi(
   return { updatedClinic, newLog, telegramSent };
 }
 
-export async function sendDirectTelegramMessage(
-  token: string,
-  chatId: string,
+export async function sendClinicUpdateTelegramNotification(
   clinic: Clinic,
   log: AuditLog
 ) {
-  const levelText = clinic.assessmentLevel !== null ? `ระดับ ${clinic.assessmentLevel} ⭐` : 'ยังไม่ระบุ';
-  const passText = clinic.assessmentLevel !== null && clinic.assessmentLevel >= 2 ? '✅ ผ่านเกณฑ์ (≥ระดับ 2)' : '⏳ รอการประเมิน/ปรับปรุง';
-
-  const text =
-    `🔔 *[แจ้งเตือนการอัปเดต RDU คลินิกเอกชน สตูล]*\n\n` +
-    `🏥 *คลินิก:* ${clinic.name}\n` +
-    `📍 *อำเภอ:* ${clinic.district}\n` +
-    `📊 *สถานะการประเมิน:* ${clinic.assessmentStatus}\n` +
-    `⭐ *ระดับที่ได้:* ${levelText}\n` +
-    `🎯 *ผลการประเมิน:* ${passText}\n` +
-    `👤 *ผู้บันทึก:* ${log.editedBy}\n` +
-    `📝 *หมายเหตุ:* ${log.remarks}\n\n` +
-    `🗓️ *เวลาบันทึก:* ${log.timestamp} น.`;
-
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  
-  const response = await fetch(url, {
+  const response = await fetch('/api/telegram/clinic-update', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      chat_id: chatId,
-      text: text,
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '🌐 เปิดระบบ Dashboard', url: window.location.href }
-          ]
-        ]
-      }
-    })
+      clinic,
+      log,
+    }),
+    credentials: 'same-origin',
   });
+  const json = await response.json().catch(() => null);
 
-  if (!response.ok) {
-    throw new Error('Telegram Bot API Response Error');
-  }
-}
-
-export async function sendOfficerRegistrationTelegramNotification(
-  user: {
-    name: string;
-    position?: string;
-    workGroup?: string;
-    affiliation?: string;
-    phone?: string;
-    emailOrId: string;
-    provider: string;
-  },
-  settings?: SettingsConfig
-) {
-  const botToken = settings?.telegramBotToken || PRESET_TELEGRAM_BOT_TOKEN;
-  const chatId = settings?.telegramChatId || PRESET_TELEGRAM_CHAT_ID;
-
-  if (!botToken || !chatId) return;
-
-  const nowStr = new Date().toLocaleString('th-TH');
-  const text =
-    `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
-    `👤 *ชื่อ-นามสกุล:* ${user.name}\n` +
-    `💼 *ตำแหน่ง:* ${user.position || '-'}\n` +
-    `🏢 *กลุ่มงาน:* ${user.workGroup || '-'}\n` +
-    `🏥 *สังกัด:* ${user.affiliation || '-'}\n` +
-    `📞 *เบอร์โทร:* ${user.phone || '-'}\n` +
-    `📧 *บัญชีใช้งาน:* ${user.emailOrId} (${user.provider.toUpperCase()})\n` +
-    `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
-    `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`;
-
-  try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: text,
-        parse_mode: 'Markdown',
-      }),
-    });
-  } catch (err) {
-    console.warn('Telegram registration notification failed:', err);
-  }
-}
-
-export async function sendOfficerApprovalTelegramNotification(
-  user: {
-    name: string;
-    position?: string;
-    workGroup?: string;
-    affiliation?: string;
-    emailOrId: string;
-  },
-  approvedBy: string = 'Super Admin',
-  settings?: SettingsConfig
-) {
-  const botToken = settings?.telegramBotToken || PRESET_TELEGRAM_BOT_TOKEN;
-  const chatId = settings?.telegramChatId || PRESET_TELEGRAM_CHAT_ID;
-
-  if (!botToken || !chatId) return;
-
-  const nowStr = new Date().toLocaleString('th-TH');
-  const text =
-    `✅ *[แจ้งเตือนการยืนยันรับ / อนุมัติสิทธิ์เจ้าหน้าที่]*\n\n` +
-    `👤 *ชื่อ-นามสกุล:* ${user.name}\n` +
-    `💼 *ตำแหน่ง:* ${user.position || '-'}\n` +
-    `🏥 *สังกัด:* ${user.affiliation || user.workGroup || '-'}\n` +
-    `📧 *บัญชีใช้งาน:* ${user.emailOrId}\n` +
-    `👑 *ผู้อนุมัติ:* ${approvedBy}\n` +
-    `🟢 *สถานะใหม่:* อนุมัติสิทธิ์เข้าใช้งานแล้ว (Active)\n\n` +
-    `🗓️ *เวลาอนุมัติ:* ${nowStr} น.`;
-
-  try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: text,
-        parse_mode: 'Markdown',
-      }),
-    });
-  } catch (err) {
-    console.warn('Telegram approval notification failed:', err);
+  if (!response.ok || json?.status !== 'success' || json?.telegramSent !== true) {
+    throw new Error(json?.message || `Telegram notification failed (HTTP ${response.status})`);
   }
 }

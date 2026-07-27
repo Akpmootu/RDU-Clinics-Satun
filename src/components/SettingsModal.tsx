@@ -22,8 +22,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [gasWebAppUrl, setGasWebAppUrl] = useState(settings.gasWebAppUrl || '');
   const [spreadsheetId, setSpreadsheetId] = useState(settings.spreadsheetId || '');
-  const [telegramBotToken, setTelegramBotToken] = useState(settings.telegramBotToken || '');
-  const [telegramChatId, setTelegramChatId] = useState(settings.telegramChatId || '');
   const [isLiveApiActive, setIsLiveApiActive] = useState(settings.isLiveApiActive || false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
 
@@ -36,8 +34,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...settings,
       gasWebAppUrl: gasWebAppUrl.trim(),
       spreadsheetId: spreadsheetId.trim(),
-      telegramBotToken: telegramBotToken.trim(),
-      telegramChatId: telegramChatId.trim(),
+      telegramBotToken: '',
+      telegramChatId: '',
       isLiveApiActive,
     };
 
@@ -208,14 +206,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="block text-[11px] font-semibold text-slate-600">
-                  Telegram Bot Token:
+                  Telegram Bot Token (Server):
                 </label>
                 <input
                   type="password"
-                  value={telegramBotToken}
-                  onChange={(e) => setTelegramBotToken(e.target.value)}
-                  placeholder="123456789:ABCdefGhIJKlmNoPQRstuVWXyz"
-                  className="w-full p-2 text-xs font-mono rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  value="••••••••••••••••"
+                  disabled
+                  className="w-full p-2 text-xs font-mono rounded-xl bg-slate-100 border border-slate-200 text-slate-500"
                 />
               </div>
 
@@ -225,10 +222,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={telegramChatId}
-                  onChange={(e) => setTelegramChatId(e.target.value)}
-                  placeholder="-1001234567890 หรือ ID ผู้ใช้"
-                  className="w-full p-2 text-xs font-mono rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  value="ตั้งค่าฝั่งเซิร์ฟเวอร์แล้ว"
+                  disabled
+                  className="w-full p-2 text-xs font-mono rounded-xl bg-slate-100 border border-slate-200 text-slate-500"
                 />
               </div>
             </div>
