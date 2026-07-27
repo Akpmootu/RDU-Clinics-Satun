@@ -35,8 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const isSuperAdmin =
-    currentUser?.role === 'super_admin' ||
-    currentUser?.emailOrId.toLowerCase() === 'akaporn1234@gmail.com';
+    currentUser?.role === 'super_admin' && currentUser.status === 'active';
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {

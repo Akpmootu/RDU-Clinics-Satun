@@ -324,7 +324,9 @@ function base64Url(value: string): string {
     .replace(/=+$/g, '');
 }
 
-async function getServiceAccountAccessToken(): Promise<string> {
+export async function getServiceAccountAccessToken(
+  scope = 'https://www.googleapis.com/auth/spreadsheets.readonly'
+): Promise<string> {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
   const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
 
@@ -337,7 +339,7 @@ async function getServiceAccountAccessToken(): Promise<string> {
   const payload = base64Url(
     JSON.stringify({
       iss: clientEmail,
-      scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+      scope,
       aud: 'https://oauth2.googleapis.com/token',
       iat: issuedAt,
       exp: issuedAt + 3600,

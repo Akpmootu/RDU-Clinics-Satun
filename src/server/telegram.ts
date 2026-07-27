@@ -36,6 +36,13 @@ function telegramConfig(): { botToken: string; chatId: string } {
   return { botToken, chatId };
 }
 
+export function isTelegramConfigured(): boolean {
+  return Boolean(
+    (envValue('TELEGRAM_BOT_TOKEN') || envValue('VITE_TELEGRAM_BOT_TOKEN')) &&
+      (envValue('TELEGRAM_CHAT_ID') || envValue('VITE_TELEGRAM_CHAT_ID'))
+  );
+}
+
 export function telegramDashboardUrl(): string {
   const configuredUrl = envValue('DASHBOARD_URL');
   if (!configuredUrl) return DEFAULT_DASHBOARD_URL;

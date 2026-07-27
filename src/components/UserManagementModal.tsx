@@ -3,6 +3,7 @@ import Swal from 'sweetalert2';
 import { AppUser, UserRole, UserStatus } from '../types';
 import {
   SUPER_ADMIN_EMAIL,
+  deleteUserServer,
   fetchServerUsers,
   maskIdentifier,
   registerOfficerServer,
@@ -15,7 +16,6 @@ interface UserManagementModalProps {
   users: AppUser[];
   currentUser: AppUser | null;
   onUpdateUsers: (newUsers: AppUser[]) => void;
-  onResetUsers: () => void;
 }
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'blocked';
@@ -188,7 +188,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   users,
   currentUser,
   onUpdateUsers,
-  onResetUsers,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -201,8 +200,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
   const isSuperAdmin =
-    currentUser?.role === 'super_admin' ||
-    currentUser?.emailOrId.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+    currentUser?.role === 'super_admin' && currentUser.status === 'active';
 
   const counts = useMemo(
     () => ({
@@ -225,6 +223,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       .then((serverUsers) => {
         onUpdateUsers(serverUsers);
         setStatusFilter(serverUsers.some((user) => user.status === 'pending') ? 'pending' : 'all');
+      })
+      .catch(async (error) => {
+        await Swal.fire({
+          icon: 'error',
+          title: 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ',
+          text: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
+          confirmButtonColor: '#059669',
+        });
       })
       .finally(() => setRefreshing(false));
   }, [isOpen]);
@@ -466,8 +472,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
   const handleDeleteUser = async (user: AppUser) => {
     const result = await Swal.fire({
-      title: 'ลบบัญชีออกจากรายการ?',
-      text: `${user.name} (${maskIdentifier(user.emailOrId)}) จะถูกนำออกจากรายการในอุปกรณ์นี้`,
+      title: 'ลบบัญชีออกจากระบบ?',
+      text: `${user.name} (${maskIdentifier(user.emailOrId)}) จะถูกเพิกถอนสิทธิ์และลบออกจากฐานข้อมูลถาวร`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#e11d48',
@@ -477,27 +483,27 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     });
     if (!result.isConfirmed) return;
 
-    onUpdateUsers(users.filter((candidate) => candidate.id !== user.id));
-    await Swal.fire({
-      icon: 'success',
-      title: 'ลบบัญชีออกจากรายการแล้ว',
-      timer: 1600,
-      showConfirmButton: false,
-    });
-  };
-
-  const handleReset = async () => {
-    const result = await Swal.fire({
-      title: 'คืนค่ารายชื่อเริ่มต้น?',
-      text: 'รายชื่อผู้ใช้ที่แก้ไขไว้จะถูกแทนที่ด้วยค่าเริ่มต้นของระบบ',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#e11d48',
-      cancelButtonColor: '#64748b',
-      confirmButtonText: 'ยืนยันคืนค่า',
-      cancelButtonText: 'ยกเลิก',
-    });
-    if (result.isConfirmed) onResetUsers();
+    setBusyUserId(user.id);
+    try {
+      const updated = await deleteUserServer(user.id);
+      onUpdateUsers(updated);
+      await Swal.fire({
+        icon: 'success',
+        title: 'ลบบัญชีออกจากระบบแล้ว',
+        text: 'สิทธิ์ของบัญชีนี้ถูกเพิกถอนทันที',
+        timer: 1800,
+        showConfirmButton: false,
+      });
+    } catch (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'ลบบัญชีไม่สำเร็จ',
+        text: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
+        confirmButtonColor: '#059669',
+      });
+    } finally {
+      setBusyUserId(null);
+    }
   };
 
   const kpis: Array<{
@@ -863,16 +869,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             กำลังจัดการโดย <b className="text-slate-800">{currentUser?.name || maskIdentifier(SUPER_ADMIN_EMAIL)}</b>
           </span>
           <div className="ml-auto flex items-center gap-2">
-            {isSuperAdmin && (
-              <button
-                type="button"
-                onClick={handleReset}
-                className="rounded-xl px-3 py-2 text-[10px] font-semibold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 sm:text-xs"
-              >
-                <i className="fa-solid fa-rotate-left mr-1"></i>
-                คืนค่าเริ่มต้น
-              </button>
-            )}
             <button
               type="button"
               onClick={onClose}

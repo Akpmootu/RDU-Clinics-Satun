@@ -15,13 +15,26 @@ import {
   loadGoogleSheetData,
 } from './googleSheets.js';
 import {
+  escapeTelegramHtml,
+  isTelegramConfigured,
   sendClinicUpdateNotification,
   sendTelegramMessage,
 } from './telegram.js';
+import {
+  createUser,
+  deleteUser,
+  findUser,
+  listUsers,
+  ServerAppUser,
+  updateUser,
+  UserProvider,
+  UserRole,
+  UserStatus,
+} from './userRepository.js';
 
-type AuthProvider = 'google' | 'line';
-type AdminRole = 'super_admin' | 'admin' | 'viewer';
-type AdminStatus = 'active' | 'pending' | 'suspended';
+type AuthProvider = UserProvider;
+type AdminRole = UserRole;
+type AdminStatus = UserStatus;
 
 interface AdminRecord {
   id: string;
@@ -73,13 +86,6 @@ function isProduction(): boolean {
 function envValue(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value || undefined;
-}
-
-function csvEnv(name: string): string[] {
-  return (process.env[name] || '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
 }
 
 function parseCookies(req: Request): Record<string, string> {
@@ -188,168 +194,9 @@ function redirectToLogin(
   return res.redirect(`/admin/login?${params.toString()}`);
 }
 
-function findGoogleAdmin(email: string, displayName: string): AdminRecord | null {
-  const normalizedEmail = email.toLowerCase();
-  const builtIn: AdminRecord[] = [
-    {
-      id: 'usr_super_admin',
-      emailOrId: 'akaporn1234@gmail.com',
-      provider: 'google',
-      role: 'super_admin',
-      status: 'active',
-      name: 'Akaporn (Super Admin)',
-    },
-    {
-      id: 'usr_admin_1',
-      emailOrId: 'satun.rdu.admin@gmail.com',
-      provider: 'google',
-      role: 'admin',
-      status: 'active',
-      name: 'เจ้าหน้าที่กลุ่มงานเภสัชกรรม สสจ.สตูล',
-    },
-  ];
-
-  const builtInMatch = builtIn.find(
-    (record) => record.emailOrId.toLowerCase() === normalizedEmail
-  );
-  if (builtInMatch) return builtInMatch;
-
-  const superAdminEmails = csvEnv('SUPER_ADMIN_GOOGLE_EMAILS').map((value) =>
-    value.toLowerCase()
-  );
-  const adminEmails = csvEnv('ADMIN_GOOGLE_EMAILS').map((value) =>
-    value.toLowerCase()
-  );
-
-  if (superAdminEmails.includes(normalizedEmail)) {
-    return {
-      id: `usr_g_${normalizedEmail}`,
-      emailOrId: normalizedEmail,
-      provider: 'google',
-      role: 'super_admin',
-      status: 'active',
-      name: displayName || normalizedEmail,
-    };
-  }
-
-  if (adminEmails.includes(normalizedEmail)) {
-    return {
-      id: `usr_g_${normalizedEmail}`,
-      emailOrId: normalizedEmail,
-      provider: 'google',
-      role: 'admin',
-      status: 'active',
-      name: displayName || normalizedEmail,
-    };
-  }
-
-  return null;
-}
-
-function findLineAdmin(userId: string, displayName: string): AdminRecord | null {
-  const superAdminIds = csvEnv('SUPER_ADMIN_LINE_USER_IDS');
-  const adminIds = csvEnv('ADMIN_LINE_USER_IDS');
-
-  if (superAdminIds.includes(userId)) {
-    return {
-      id: `usr_l_${userId}`,
-      emailOrId: userId,
-      provider: 'line',
-      role: 'super_admin',
-      status: 'active',
-      name: displayName || 'LINE Super Admin',
-    };
-  }
-
-  if (adminIds.includes(userId)) {
-    return {
-      id: `usr_l_${userId}`,
-      emailOrId: userId,
-      provider: 'line',
-      role: 'admin',
-      status: 'active',
-      name: displayName || 'LINE Admin',
-    };
-  }
-
-  return null;
-}
-
-export interface ServerAppUser {
-  id: string;
-  emailOrId: string;
-  name: string;
-  firstName?: string;
-  lastName?: string;
-  position?: string;
-  workGroup?: string;
-  affiliation?: string;
-  phone?: string;
-  provider: 'google' | 'line';
-  role: 'super_admin' | 'admin' | 'viewer' | 'user';
-  status: 'pending' | 'active' | 'suspended' | 'blocked';
-  createdAt: string;
-  approvedBy?: string;
-  approvedAt?: string;
-  avatarUrl?: string;
-}
-
-const DEFAULT_SERVER_USERS: ServerAppUser[] = [
-  {
-    id: 'usr_super_admin',
-    emailOrId: 'akaporn1234@gmail.com',
-    name: 'เอกภรณ์ สุวรรณฉวี',
-    firstName: 'เอกภรณ์',
-    lastName: 'สุวรรณฉวี',
-    position: 'ภก.ชำนาญการพิเศษ (Super Admin)',
-    workGroup: 'กลุ่มงานเภสัชกรรมและคุ้มครองผู้บริโภค',
-    affiliation: 'สำนักงานสาธารณสุขจังหวัดสตูล',
-    phone: '081-234-5678',
-    provider: 'google',
-    role: 'super_admin',
-    status: 'active',
-    createdAt: '2569-01-01 09:00',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'usr_admin_1',
-    emailOrId: 'satun.rdu.admin@gmail.com',
-    name: 'เจ้าหน้าที่ สสจ.สตูล',
-    firstName: 'เจ้าหน้าที่',
-    lastName: 'สสจ.สตูล',
-    position: 'นักวิชาการสาธารณสุข',
-    workGroup: 'กลุ่มงานพัฒนายุทธศาสตร์สาธารณสุข',
-    affiliation: 'สำนักงานสาธารณสุขจังหวัดสตูล',
-    phone: '074-711-071',
-    provider: 'google',
-    role: 'admin',
-    status: 'active',
-    createdAt: '2569-01-02 10:30',
-    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'usr_line_admin',
-    emailOrId: 'satun_rdu_line',
-    name: 'LINE Admin Satun',
-    firstName: 'เจ้าหน้าที่',
-    lastName: 'LINE Admin',
-    position: 'เจ้าพนักงานสาธารณสุข',
-    workGroup: 'กลุ่มงานควบคุมโรคติดต่อ',
-    affiliation: 'สำนักงานสาธารณสุขอำเภอเมืองสตูล',
-    phone: '074-721-123',
-    provider: 'line',
-    role: 'admin',
-    status: 'active',
-    createdAt: '2569-01-05 14:15',
-    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-  }
-];
-
-const globalServerUsers: ServerAppUser[] = [...DEFAULT_SERVER_USERS];
-
 async function sendServerTelegramNotification(text: string): Promise<boolean> {
   try {
-    await sendTelegramMessage(text, 'Markdown');
+    await sendTelegramMessage(text, 'HTML');
     return true;
   } catch (err) {
     console.warn('Server Telegram notification failed:', err);
@@ -362,14 +209,8 @@ async function registerOrFindOAuthUser(
   identifier: string,
   displayName: string
 ): Promise<AdminRecord> {
-  const cleanId = identifier.trim().toLowerCase();
-
-  const envAdmin = provider === 'google' ? findGoogleAdmin(cleanId, displayName) : findLineAdmin(cleanId, displayName);
-  if (envAdmin) return envAdmin;
-
-  const existing = globalServerUsers.find(
-    (u) => u.emailOrId.toLowerCase() === cleanId && u.provider === provider
-  );
+  const cleanId = identifier.trim().toLocaleLowerCase('en-US');
+  const existing = await findUser(provider, cleanId);
 
   if (existing) {
     return {
@@ -382,8 +223,7 @@ async function registerOrFindOAuthUser(
     };
   }
 
-  const newPendingUser: ServerAppUser = {
-    id: `usr_${provider}_${Date.now()}`,
+  const { user: newPendingUser, created } = await createUser({
     emailOrId: identifier.trim(),
     name: displayName || (provider === 'line' ? `LINE User (${identifier.slice(0, 8)}...)` : identifier),
     position: `เจ้าหน้าที่ (ผ่าน ${provider.toUpperCase()})`,
@@ -398,19 +238,19 @@ async function registerOrFindOAuthUser(
       provider === 'google'
         ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'
         : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-  };
+  });
 
-  globalServerUsers.unshift(newPendingUser);
-
-  const nowStr = new Date().toLocaleString('th-TH');
-  await sendServerTelegramNotification(
-    `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
-    `👤 *ชื่อ-นามสกุล:* ${newPendingUser.name}\n` +
-    `💼 *ตำแหน่ง:* ${newPendingUser.position}\n` +
-    `📧 *บัญชีใช้งาน:* ${newPendingUser.emailOrId} (${provider.toUpperCase()})\n` +
-    `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
-    `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`
-  );
+  if (created) {
+    const nowStr = new Date().toLocaleString('th-TH');
+    await sendServerTelegramNotification(
+      `🔔 <b>[มีเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]</b>\n\n` +
+      `👤 <b>ชื่อ-นามสกุล:</b> ${escapeTelegramHtml(newPendingUser.name)}\n` +
+      `💼 <b>ตำแหน่ง:</b> ${escapeTelegramHtml(newPendingUser.position)}\n` +
+      `📧 <b>บัญชีใช้งาน:</b> ${escapeTelegramHtml(newPendingUser.emailOrId)} (${provider.toUpperCase()})\n` +
+      `⏳ <b>สถานะ:</b> รอ Super Admin ตรวจสอบและอนุมัติ\n\n` +
+      `🗓️ <b>เวลาลงทะเบียน:</b> ${escapeTelegramHtml(nowStr)} น.`
+    );
+  }
 
   return {
     id: newPendingUser.id,
@@ -450,15 +290,60 @@ function readSession(req: Request): AdminJwtPayload | null {
   return token ? verifyAdminToken(token) : null;
 }
 
+async function readPersistentSession(req: Request): Promise<ServerAppUser | null> {
+  const session = readSession(req);
+  if (!session) return null;
+  return findUser(session.provider, session.emailOrId);
+}
+
+async function requireSuperAdmin(
+  req: Request,
+  res: Response
+): Promise<ServerAppUser | null> {
+  const session = readSession(req);
+  if (!session) {
+    res.status(401).json({
+      status: 'error',
+      code: 'AUTH_REQUIRED',
+      message: 'กรุณาเข้าสู่ระบบก่อนจัดการผู้ใช้งาน',
+    });
+    return null;
+  }
+
+  const currentUser = await findUser(session.provider, session.emailOrId);
+  if (
+    !currentUser ||
+    currentUser.status !== 'active' ||
+    currentUser.role !== 'super_admin'
+  ) {
+    res.status(403).json({
+      status: 'error',
+      code: 'SUPER_ADMIN_REQUIRED',
+      message: 'คำสั่งนี้อนุญาตเฉพาะ Super Admin ที่ใช้งานอยู่',
+    });
+    return null;
+  }
+  return currentUser;
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     app: 'RDU Clinics Satun OAuth Server',
-    version: '2.0.0',
+    version: '3.0.0',
     oauth: {
       google: { configured: Boolean(providerConfig('google')) },
       line: { configured: Boolean(providerConfig('line')) },
       session: { configured: isJwtConfigured() },
+    },
+    services: {
+      persistentUsers: {
+        configured: Boolean(
+          process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
+            process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+        ),
+      },
+      telegram: { configured: isTelegramConfigured() },
     },
   });
 });
@@ -493,12 +378,22 @@ app.get('/api/google-sheet', async (req, res) => {
 });
 
 app.post('/api/telegram/clinic-update', async (req, res) => {
-  const user = readSession(req);
-  const isAuthorized =
-    user?.status === 'active' &&
-    (user.role === 'admin' || user.role === 'super_admin');
-
-  if (!isAuthorized) {
+  let user: ServerAppUser | null = null;
+  try {
+    user = await readPersistentSession(req);
+  } catch (error) {
+    console.error('Unable to verify Telegram sender', error);
+    return res.status(503).json({
+      status: 'error',
+      code: 'USER_STORE_UNAVAILABLE',
+      message: 'ไม่สามารถตรวจสอบสิทธิ์ผู้ใช้งานได้ในขณะนี้',
+    });
+  }
+  if (
+    !user ||
+    user.status !== 'active' ||
+    (user.role !== 'admin' && user.role !== 'super_admin')
+  ) {
     return res.status(401).json({
       status: 'error',
       code: 'AUTH_REQUIRED',
@@ -723,39 +618,56 @@ app.get('/api/auth/line/callback', async (req, res) => {
   }
 });
 
-app.get('/api/users', (_req, res) => {
-  res.json({
-    status: 'success',
-    users: globalServerUsers,
-  });
+app.get('/api/users', async (req, res) => {
+  try {
+    const actor = await requireSuperAdmin(req, res);
+    if (!actor) return;
+    return res.json({
+      status: 'success',
+      users: await listUsers(),
+    });
+  } catch (error) {
+    console.error('Unable to load users', error);
+    return res.status(503).json({
+      status: 'error',
+      code: 'USER_STORE_UNAVAILABLE',
+      message: error instanceof Error ? error.message : 'ไม่สามารถโหลดรายชื่อผู้ใช้ได้',
+    });
+  }
 });
 
 app.post('/api/users/register', async (req, res) => {
   const { firstName, lastName, position, workGroup, affiliation, phone, emailOrId, provider } = req.body || {};
 
-  if (!emailOrId || !provider) {
+  if (!emailOrId || (provider !== 'google' && provider !== 'line')) {
     return res.status(400).json({ status: 'error', message: 'กรุณาระบุข้อมูลให้ครบถ้วน' });
   }
 
-  const cleanId = String(emailOrId).trim().toLowerCase();
-  const existing = globalServerUsers.find((u) => u.emailOrId.toLowerCase() === cleanId && u.provider === provider);
-
-  if (existing) {
-    return res.json({ status: 'success', user: existing, message: 'บัญชีนี้ถูกบันทึกไว้ในระบบแล้ว' });
+  const cleanId = String(emailOrId).trim().slice(0, 320);
+  if (
+    cleanId.length < 3 ||
+    (provider === 'google' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanId))
+  ) {
+    return res.status(400).json({
+      status: 'error',
+      code: 'INVALID_IDENTIFIER',
+      message: provider === 'google' ? 'รูปแบบอีเมลไม่ถูกต้อง' : 'LINE ID ไม่ถูกต้อง',
+    });
   }
 
-  const fullName = `${String(firstName || '').trim()} ${String(lastName || '').trim()}`.trim() || cleanId;
-  const newUser: ServerAppUser = {
-    id: `usr_reg_${Date.now()}`,
-    emailOrId: String(emailOrId).trim(),
+  const clean = (value: unknown, maxLength: number) =>
+    String(value || '').trim().slice(0, maxLength);
+  const fullName = `${clean(firstName, 100)} ${clean(lastName, 100)}`.trim() || cleanId;
+  const newUser: Omit<ServerAppUser, 'id'> = {
+    emailOrId: cleanId,
     name: fullName,
-    firstName: String(firstName || '').trim(),
-    lastName: String(lastName || '').trim(),
-    position: String(position || '').trim() || 'เจ้าหน้าที่',
-    workGroup: String(workGroup || '').trim() || 'กลุ่มงาน',
-    affiliation: String(affiliation || '').trim() || 'สังกัด',
-    phone: String(phone || '').trim() || '-',
-    provider: provider === 'line' ? 'line' : 'google',
+    firstName: clean(firstName, 100),
+    lastName: clean(lastName, 100),
+    position: clean(position, 200) || 'เจ้าหน้าที่',
+    workGroup: clean(workGroup, 200) || 'กลุ่มงาน',
+    affiliation: clean(affiliation, 200) || 'สังกัด',
+    phone: clean(phone, 50) || '-',
+    provider,
     role: 'admin',
     status: 'pending',
     createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -765,91 +677,195 @@ app.post('/api/users/register', async (req, res) => {
         : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
   };
 
-  globalServerUsers.unshift(newUser);
+  try {
+    const result = await createUser(newUser);
+    if (!result.created) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'ACCOUNT_ALREADY_REGISTERED',
+        message: 'บัญชีนี้ลงทะเบียนในระบบแล้ว กรุณาเข้าสู่ระบบหรือติดต่อ Super Admin',
+      });
+    }
+    let notificationSent = false;
+    const nowStr = new Date().toLocaleString('th-TH');
+    notificationSent = await sendServerTelegramNotification(
+      `🔔 <b>[มีเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]</b>\n\n` +
+      `👤 <b>ชื่อ-นามสกุล:</b> ${escapeTelegramHtml(result.user.name)}\n` +
+      `💼 <b>ตำแหน่ง:</b> ${escapeTelegramHtml(result.user.position)}\n` +
+      `🏢 <b>กลุ่มงาน:</b> ${escapeTelegramHtml(result.user.workGroup)}\n` +
+      `🏥 <b>สังกัด:</b> ${escapeTelegramHtml(result.user.affiliation)}\n` +
+      `📞 <b>เบอร์โทร:</b> ${escapeTelegramHtml(result.user.phone)}\n` +
+      `📧 <b>บัญชีใช้งาน:</b> ${escapeTelegramHtml(result.user.emailOrId)} (${result.user.provider.toUpperCase()})\n` +
+      `⏳ <b>สถานะ:</b> รอ Super Admin ตรวจสอบและอนุมัติ\n\n` +
+      `🗓️ <b>เวลาลงทะเบียน:</b> ${escapeTelegramHtml(nowStr)} น.`
+    );
 
-  const nowStr = new Date().toLocaleString('th-TH');
-  await sendServerTelegramNotification(
-    `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
-    `👤 *ชื่อ-นามสกุล:* ${newUser.name}\n` +
-    `💼 *ตำแหน่ง:* ${newUser.position}\n` +
-    `🏢 *กลุ่มงาน:* ${newUser.workGroup}\n` +
-    `🏥 *สังกัด:* ${newUser.affiliation}\n` +
-    `📞 *เบอร์โทร:* ${newUser.phone}\n` +
-    `📧 *บัญชีใช้งาน:* ${newUser.emailOrId} (${newUser.provider.toUpperCase()})\n` +
-    `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
-    `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`
-  );
-
-  return res.json({
-    status: 'success',
-    user: newUser,
-    message: 'ลงทะเบียนเจ้าหน้าที่สำเร็จ',
-  });
+    return res.status(201).json({
+      status: 'success',
+      user: result.user,
+      notificationSent,
+      message: 'ลงทะเบียนสำเร็จ ข้อมูลถูกส่งให้ Super Admin ตรวจสอบแล้ว',
+    });
+  } catch (error) {
+    console.error('Unable to register user', error);
+    return res.status(503).json({
+      status: 'error',
+      code: 'USER_REGISTRATION_FAILED',
+      message: error instanceof Error ? error.message : 'ไม่สามารถบันทึกการลงทะเบียนได้',
+    });
+  }
 });
 
 app.post('/api/users/approve', async (req, res) => {
   const { userId, emailOrId, status, role } = req.body || {};
-
-  const target = globalServerUsers.find(
-    (u) => (userId && u.id === userId) || (emailOrId && u.emailOrId.toLowerCase() === String(emailOrId).toLowerCase())
-  );
-
-  if (!target) {
-    return res.status(404).json({ status: 'error', message: 'ไม่พบผู้ใช้งานในระบบ' });
+  const validStatuses: UserStatus[] = ['pending', 'active', 'suspended', 'blocked'];
+  const validRoles: UserRole[] = ['super_admin', 'admin', 'viewer', 'user'];
+  if (
+    (!userId && !emailOrId) ||
+    (status && !validStatuses.includes(status)) ||
+    (role && !validRoles.includes(role))
+  ) {
+    return res.status(400).json({
+      status: 'error',
+      code: 'INVALID_USER_UPDATE',
+      message: 'ข้อมูลสถานะหรือระดับสิทธิ์ไม่ถูกต้อง',
+    });
   }
 
-  if (status) target.status = status;
-  if (role) target.role = role;
-
-  if (status === 'active') {
-    const nowStr = new Date().toLocaleString('th-TH');
-    await sendServerTelegramNotification(
-      `✅ *[แจ้งเตือนการยืนยันรับ / อนุมัติสิทธิ์เจ้าหน้าที่]*\n\n` +
-      `👤 *ชื่อ-นามสกุล:* ${target.name}\n` +
-      `💼 *ตำแหน่ง:* ${target.position || '-'}\n` +
-      `🏥 *สังกัด:* ${target.affiliation || target.workGroup || '-'}\n` +
-      `📧 *บัญชีใช้งาน:* ${target.emailOrId}\n` +
-      `🟢 *สถานะใหม่:* อนุมัติสิทธิ์เข้าใช้งานแล้ว (Active)\n\n` +
-      `🗓️ *เวลาอนุมัติ:* ${nowStr} น.`
+  try {
+    const actor = await requireSuperAdmin(req, res);
+    if (!actor) return;
+    const targetBefore = (await listUsers()).find(
+      (user) =>
+        (userId && user.id === userId) ||
+        (emailOrId &&
+          user.emailOrId.toLocaleLowerCase('en-US') ===
+            String(emailOrId).trim().toLocaleLowerCase('en-US'))
     );
+    if (!targetBefore) {
+      return res.status(404).json({ status: 'error', message: 'ไม่พบผู้ใช้งานในระบบ' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const result = await updateUser(
+      { userId, emailOrId },
+      {
+        ...(status ? { status } : {}),
+        ...(role ? { role } : {}),
+        ...(status === 'active'
+          ? {
+              approvedBy: actor.emailOrId,
+              approvedAt: nowIso,
+            }
+          : {}),
+      }
+    );
+
+    if (status === 'active' && targetBefore.status !== 'active') {
+      const nowStr = new Date().toLocaleString('th-TH');
+      await sendServerTelegramNotification(
+        `✅ <b>[อนุมัติสิทธิ์เจ้าหน้าที่แล้ว]</b>\n\n` +
+        `👤 <b>ชื่อ-นามสกุล:</b> ${escapeTelegramHtml(result.user.name)}\n` +
+        `💼 <b>ตำแหน่ง:</b> ${escapeTelegramHtml(result.user.position || '-')}\n` +
+        `🏥 <b>สังกัด:</b> ${escapeTelegramHtml(result.user.affiliation || result.user.workGroup || '-')}\n` +
+        `📧 <b>บัญชีใช้งาน:</b> ${escapeTelegramHtml(result.user.emailOrId)}\n` +
+        `🟢 <b>สถานะใหม่:</b> อนุมัติให้เข้าใช้งานแล้ว\n` +
+        `🛡️ <b>ผู้อนุมัติ:</b> ${escapeTelegramHtml(actor.name)}\n\n` +
+        `🗓️ <b>เวลาอนุมัติ:</b> ${escapeTelegramHtml(nowStr)} น.`
+      );
+    }
+
+    return res.json({
+      status: 'success',
+      users: result.users,
+      user: result.user,
+    });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (code === 'USER_NOT_FOUND') {
+      return res.status(404).json({ status: 'error', message: 'ไม่พบผู้ใช้งานในระบบ' });
+    }
+    if (code === 'OWNER_PROTECTED') {
+      return res.status(409).json({ status: 'error', message: 'ไม่สามารถเปลี่ยนสิทธิ์บัญชีเจ้าของระบบได้' });
+    }
+    console.error('Unable to update user', error);
+    return res.status(503).json({
+      status: 'error',
+      code: 'USER_UPDATE_FAILED',
+      message: error instanceof Error ? error.message : 'ไม่สามารถบันทึกข้อมูลผู้ใช้ได้',
+    });
   }
-
-  return res.json({
-    status: 'success',
-    users: globalServerUsers,
-    user: target,
-  });
 });
 
-app.post('/api/users/reset', (_req, res) => {
-  globalServerUsers.length = 0;
-  globalServerUsers.push(...DEFAULT_SERVER_USERS);
-  return res.json({ status: 'success', users: globalServerUsers });
+app.delete('/api/users/:userId', async (req, res) => {
+  try {
+    const actor = await requireSuperAdmin(req, res);
+    if (!actor) return;
+    const target = (await listUsers()).find((user) => user.id === req.params.userId);
+    if (!target) {
+      return res.status(404).json({ status: 'error', message: 'ไม่พบผู้ใช้งานในระบบ' });
+    }
+    const users = await deleteUser({ userId: req.params.userId });
+    await sendServerTelegramNotification(
+      `🗑️ <b>[ลบบัญชีผู้ใช้งานออกจากระบบ]</b>\n\n` +
+      `👤 <b>บัญชีที่ลบ:</b> ${escapeTelegramHtml(target.name)}\n` +
+      `📧 <b>ชื่อบัญชี:</b> ${escapeTelegramHtml(target.emailOrId)}\n` +
+      `🛡️ <b>ดำเนินการโดย:</b> ${escapeTelegramHtml(actor.name)}\n\n` +
+      `ℹ️ บัญชีนี้ถูกเพิกถอนสิทธิ์ทันที และต้องลงทะเบียนใหม่หากต้องการกลับมาใช้งาน`
+    );
+    return res.json({ status: 'success', users });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (code === 'OWNER_PROTECTED') {
+      return res.status(409).json({ status: 'error', message: 'ไม่สามารถลบบัญชีเจ้าของระบบได้' });
+    }
+    console.error('Unable to delete user', error);
+    return res.status(503).json({
+      status: 'error',
+      code: 'USER_DELETE_FAILED',
+      message: error instanceof Error ? error.message : 'ไม่สามารถลบบัญชีได้',
+    });
+  }
 });
 
-app.get('/api/auth/me', (req, res) => {
-  const user = readSession(req);
-  if (!user) {
+app.get('/api/auth/me', async (req, res) => {
+  const session = readSession(req);
+  if (!session) {
     return res.json({
       status: 'unauthenticated',
       user: null,
     });
   }
 
-  const cleanId = user.emailOrId.toLowerCase();
-  const serverUser = globalServerUsers.find((u) => u.emailOrId.toLowerCase() === cleanId);
-  const effectiveStatus = serverUser ? serverUser.status : user.status;
-  const effectiveRole = serverUser ? serverUser.role : user.role;
-
-  return res.json({
-    status: 'success',
-    user: {
-      ...user,
-      status: effectiveStatus,
-      role: effectiveRole,
-      maskedIdentifier: maskIdentifier(user.emailOrId),
-    },
-  });
+  try {
+    const currentUser = await findUser(session.provider, session.emailOrId);
+    if (!currentUser) {
+      res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
+      return res.status(401).json({
+        status: 'unauthenticated',
+        code: 'ACCOUNT_REMOVED',
+        user: null,
+      });
+    }
+    return res.json({
+      status: 'success',
+      user: {
+        ...session,
+        id: currentUser.id,
+        displayName: currentUser.name,
+        status: currentUser.status,
+        role: currentUser.role,
+        maskedIdentifier: maskIdentifier(currentUser.emailOrId),
+      },
+    });
+  } catch (error) {
+    console.error('Unable to verify session against user store', error);
+    return res.status(503).json({
+      status: 'error',
+      code: 'USER_STORE_UNAVAILABLE',
+      message: 'ไม่สามารถตรวจสอบสิทธิ์ผู้ใช้งานได้ในขณะนี้',
+    });
+  }
 });
 
 app.post('/api/auth/logout', (_req, res) => {

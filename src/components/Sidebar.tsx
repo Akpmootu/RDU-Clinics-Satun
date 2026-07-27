@@ -98,8 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [districtsExpanded, setDistrictsExpanded] = useState(false);
   const isSuperAdmin =
-    currentUser?.role === 'super_admin' ||
-    currentUser?.emailOrId.toLowerCase() === 'akaporn1234@gmail.com';
+    currentUser?.role === 'super_admin' && currentUser.status === 'active';
 
   const overviewItems: NavigationItem[] = [
     {

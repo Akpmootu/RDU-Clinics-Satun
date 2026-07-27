@@ -37,9 +37,7 @@ import {
   loadAppUsers,
   saveAppUsers,
   saveCurrentUser,
-  DEFAULT_USERS,
   fetchServerUsers,
-  resetServerUsers,
 } from './services/userService';
 
 export default function App() {
@@ -112,7 +110,6 @@ export default function App() {
 
   // Check backend session via /api/auth/me & handle OAuth callback redirect parameter
   useEffect(() => {
-    fetchServerUsers().then(setAppUsers).catch(() => {});
     const urlParams = new URLSearchParams(window.location.search);
     const authStatus = urlParams.get('auth');
 
@@ -126,9 +123,9 @@ export default function App() {
         }
         return null;
       })
-      .then((data) => {
+      .then(async (data) => {
         if (data && data.status === 'success' && data.user) {
-          let authUser: AppUser = {
+          const authUser: AppUser = {
             id: data.user.id,
             name: data.user.displayName || data.user.emailOrId,
             emailOrId: data.user.emailOrId,
@@ -138,39 +135,6 @@ export default function App() {
             createdAt: new Date().toISOString(),
           };
 
-          const currentUsers = loadAppUsers();
-          const existingIndex = currentUsers.findIndex(
-            (u) => u.emailOrId.toLowerCase() === authUser.emailOrId.toLowerCase()
-          );
-
-          if (existingIndex === -1) {
-            // New user logging in via OAuth (e.g. LINE or Google) that isn't in appUsers yet
-            const newPendingUser: AppUser = {
-              ...authUser,
-              position: `เจ้าหน้าที่ (ผ่าน ${authUser.provider.toUpperCase()})`,
-              workGroup: 'รอระบุกลุ่มงาน',
-              affiliation: 'รอระบุสังกัด',
-              phone: '-',
-              createdAt: new Date().toLocaleString('th-TH'),
-            };
-            const updatedUsers = [newPendingUser, ...currentUsers];
-            saveAppUsers(updatedUsers);
-            setAppUsers(updatedUsers);
-
-          } else {
-            const existingUser = currentUsers[existingIndex];
-            // Check if Super Admin approved this user in appUsers locally!
-            if (existingUser.status === 'active' && authUser.status === 'pending') {
-              authUser = {
-                ...authUser,
-                status: 'active',
-                role: existingUser.role || 'admin',
-                name: existingUser.name || authUser.name,
-                position: existingUser.position || authUser.position,
-              };
-            }
-          }
-
           setCurrentUser(authUser);
           saveCurrentUser(authUser);
 
@@ -178,6 +142,13 @@ export default function App() {
             authUser.status === 'active' &&
             (authUser.role === 'admin' || authUser.role === 'super_admin');
           setUserRole(hasAdminAccess ? 'admin' : 'user');
+          if (authUser.status === 'active' && authUser.role === 'super_admin') {
+            try {
+              setAppUsers(await fetchServerUsers());
+            } catch (error) {
+              console.warn('Unable to load protected user list', error);
+            }
+          }
 
           if (hasAdminAccess && authStatus === 'success') {
             setActiveTab('dashboard');
@@ -267,19 +238,18 @@ export default function App() {
   };
 
   const handleOpenUserManagementModal = async () => {
-    const serverUsers = await fetchServerUsers();
-    setAppUsers(serverUsers);
-    setIsUserManagementModalOpen(true);
-  };
-
-  const handleResetAppUsers = async () => {
-    const resUsers = await resetServerUsers();
-    setAppUsers(resUsers);
-    Swal.fire({
-      icon: 'success',
-      title: 'คืนค่าเริ่มต้นผู้ใช้งานเรียบร้อยแล้ว!',
-      confirmButtonColor: '#059669',
-    });
+    try {
+      const serverUsers = await fetchServerUsers();
+      setAppUsers(serverUsers);
+      setIsUserManagementModalOpen(true);
+    } catch (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'เปิดหน้าจัดการผู้ใช้ไม่สำเร็จ',
+        text: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
+        confirmButtonColor: '#059669',
+      });
+    }
   };
 
   const handleSaveClinicStatus = async (
@@ -525,7 +495,6 @@ export default function App() {
         users={appUsers}
         currentUser={currentUser}
         onUpdateUsers={handleUpdateAppUsers}
-        onResetUsers={handleResetAppUsers}
       />
 
       {/* Clinic Detail View Modal (Role-aware) */}
