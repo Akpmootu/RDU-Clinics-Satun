@@ -29,9 +29,9 @@ import {
   loadLocalLogs,
   saveLocalLogs,
   calculateSummaries,
+  fetchFromGoogleSheet,
   fetchFromGas,
   updateClinicStatusApi,
-  sendOfficerRegistrationTelegramNotification,
 } from './services/api';
 import {
   loadAppUsers,
@@ -73,13 +73,20 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
 
-  // --- Sync with Live Google Apps Script API if active ---
+  // --- Sync with the configured Google Sheet if active ---
   const refreshDataFromGas = useCallback(async () => {
-    if (!settings.isLiveApiActive || !settings.gasWebAppUrl) return;
+    if (!settings.isLiveApiActive || !settings.spreadsheetId) return;
 
     setIsLoading(true);
     try {
-      const data = await fetchFromGas(settings.gasWebAppUrl);
+      let data;
+      try {
+        data = await fetchFromGoogleSheet(settings.spreadsheetId);
+      } catch (sheetError) {
+        if (!settings.gasWebAppUrl) throw sheetError;
+        console.warn('Direct Google Sheet fetch failed, trying Google Apps Script:', sheetError);
+        data = await fetchFromGas(settings.gasWebAppUrl);
+      }
       if (data && data.clinics) {
         setClinics(data.clinics);
         saveLocalClinics(data.clinics);
@@ -93,7 +100,11 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [settings.isLiveApiActive, settings.gasWebAppUrl]);
+  }, [settings.isLiveApiActive, settings.spreadsheetId, settings.gasWebAppUrl]);
+
+  useEffect(() => {
+    void refreshDataFromGas();
+  }, [refreshDataFromGas]);
 
   // Check backend session via /api/auth/me & handle OAuth callback redirect parameter
   useEffect(() => {
@@ -142,9 +153,6 @@ export default function App() {
             saveAppUsers(updatedUsers);
             setAppUsers(updatedUsers);
 
-            if (authUser.status === 'pending') {
-              sendOfficerRegistrationTelegramNotification(newPendingUser, loadSettings()).catch(() => {});
-            }
           } else {
             const existingUser = currentUsers[existingIndex];
             // Check if Super Admin approved this user in appUsers locally!
@@ -277,7 +285,7 @@ export default function App() {
     editedBy: string,
     remarks: string
   ) => {
-    const { updatedClinic, newLog } = await updateClinicStatusApi(
+    const { updatedClinic, newLog, telegramSent } = await updateClinicStatusApi(
       clinic,
       newStatus,
       newLevel,
@@ -291,6 +299,7 @@ export default function App() {
       prev.map((c) => (c.id === updatedClinic.id ? updatedClinic : c))
     );
     setLogs((prev) => [newLog, ...prev]);
+    return telegramSent;
   };
 
   const handleSaveSettings = (newSettings: SettingsConfig) => {

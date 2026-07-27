@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { AppUser, UserRole } from '../types';
 import { SUPER_ADMIN_EMAIL, maskIdentifier, loadAppUsers, fetchServerUsers, updateUserStatusServer, resetServerUsers } from '../services/userService';
-import { sendOfficerApprovalTelegramNotification, loadSettings } from '../services/api';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -48,7 +47,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const handleApproveUser = async (user: AppUser) => {
     const updated = await updateUserStatusServer(user.id, user.emailOrId, 'active');
     onUpdateUsers(updated);
-    sendOfficerApprovalTelegramNotification(user, currentUser?.name || 'Super Admin', loadSettings()).catch(() => {});
     
     Swal.fire({
       icon: 'success',
@@ -75,7 +73,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         let latestList = users;
         for (const u of pendingUsers) {
           latestList = await updateUserStatusServer(u.id, u.emailOrId, 'active');
-          sendOfficerApprovalTelegramNotification(u, currentUser?.name || 'Super Admin', loadSettings()).catch(() => {});
         }
         onUpdateUsers(latestList);
 

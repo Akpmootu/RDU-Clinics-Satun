@@ -9,6 +9,15 @@ import {
   verifyAdminToken,
   verifySignedOauthState,
 } from './auth.js';
+import {
+  DEFAULT_SHEET_GID,
+  DEFAULT_SPREADSHEET_ID,
+  loadGoogleSheetData,
+} from './googleSheets.js';
+import {
+  sendClinicUpdateNotification,
+  sendTelegramMessage,
+} from './telegram.js';
 
 type AuthProvider = 'google' | 'line';
 type AdminRole = 'super_admin' | 'admin' | 'viewer';
@@ -338,32 +347,21 @@ const DEFAULT_SERVER_USERS: ServerAppUser[] = [
 
 const globalServerUsers: ServerAppUser[] = [...DEFAULT_SERVER_USERS];
 
-async function sendServerTelegramNotification(text: string) {
-  const botToken = process.env.VITE_TELEGRAM_BOT_TOKEN || '8642457774:AAEssByKIIelsFpDnkz9ridr-IT--J2Ap9I';
-  const chatId = process.env.VITE_TELEGRAM_CHAT_ID || '-5319646324';
-
-  if (!botToken || !chatId) return;
-
+async function sendServerTelegramNotification(text: string): Promise<boolean> {
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'Markdown',
-      }),
-    });
+    await sendTelegramMessage(text, 'Markdown');
+    return true;
   } catch (err) {
     console.warn('Server Telegram notification failed:', err);
+    return false;
   }
 }
 
-function registerOrFindOAuthUser(
+async function registerOrFindOAuthUser(
   provider: AuthProvider,
   identifier: string,
   displayName: string
-): AdminRecord {
+): Promise<AdminRecord> {
   const cleanId = identifier.trim().toLowerCase();
 
   const envAdmin = provider === 'google' ? findGoogleAdmin(cleanId, displayName) : findLineAdmin(cleanId, displayName);
@@ -405,14 +403,14 @@ function registerOrFindOAuthUser(
   globalServerUsers.unshift(newPendingUser);
 
   const nowStr = new Date().toLocaleString('th-TH');
-  sendServerTelegramNotification(
+  await sendServerTelegramNotification(
     `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
     `👤 *ชื่อ-นามสกุล:* ${newPendingUser.name}\n` +
     `💼 *ตำแหน่ง:* ${newPendingUser.position}\n` +
     `📧 *บัญชีใช้งาน:* ${newPendingUser.emailOrId} (${provider.toUpperCase()})\n` +
     `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
     `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`
-  ).catch(() => {});
+  );
 
   return {
     id: newPendingUser.id,
@@ -463,6 +461,98 @@ app.get('/api/health', (_req, res) => {
       session: { configured: isJwtConfigured() },
     },
   });
+});
+
+app.get('/api/google-sheet', async (req, res) => {
+  const spreadsheetId =
+    typeof req.query.spreadsheetId === 'string' && req.query.spreadsheetId.trim()
+      ? req.query.spreadsheetId
+      : DEFAULT_SPREADSHEET_ID;
+  const gid =
+    typeof req.query.gid === 'string' && req.query.gid.trim()
+      ? req.query.gid
+      : DEFAULT_SHEET_GID;
+
+  try {
+    const data = await loadGoogleSheetData(spreadsheetId, gid);
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+    return res.json({
+      status: 'success',
+      timestamp: new Date().toISOString(),
+      data,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'ไม่สามารถอ่าน Google Sheet ได้';
+    console.error('Google Sheet sync failed', error);
+    return res.status(502).json({
+      status: 'error',
+      code: 'GOOGLE_SHEET_SYNC_FAILED',
+      message,
+    });
+  }
+});
+
+app.post('/api/telegram/clinic-update', async (req, res) => {
+  const user = readSession(req);
+  const isAuthorized =
+    user?.status === 'active' &&
+    (user.role === 'admin' || user.role === 'super_admin');
+
+  if (!isAuthorized) {
+    return res.status(401).json({
+      status: 'error',
+      code: 'AUTH_REQUIRED',
+      message: 'กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่ก่อนส่งการแจ้งเตือน',
+    });
+  }
+
+  const clinic = req.body?.clinic;
+  const log = req.body?.log;
+  if (
+    !clinic ||
+    !log ||
+    typeof clinic.name !== 'string' ||
+    typeof clinic.district !== 'string' ||
+    typeof clinic.assessmentStatus !== 'string' ||
+    typeof log.editedBy !== 'string' ||
+    typeof log.remarks !== 'string' ||
+    typeof log.timestamp !== 'string'
+  ) {
+    return res.status(400).json({
+      status: 'error',
+      code: 'INVALID_NOTIFICATION',
+      message: 'ข้อมูลสำหรับส่ง Telegram ไม่ครบถ้วน',
+    });
+  }
+
+  const assessmentLevel =
+    typeof clinic.assessmentLevel === 'number' ? clinic.assessmentLevel : null;
+
+  try {
+    const result = await sendClinicUpdateNotification({
+      clinicName: clinic.name.slice(0, 500),
+      district: clinic.district.slice(0, 100),
+      assessmentStatus: clinic.assessmentStatus.slice(0, 100),
+      assessmentLevel,
+      editedBy: log.editedBy.slice(0, 500),
+      remarks: log.remarks.slice(0, 1000),
+      timestamp: log.timestamp.slice(0, 100),
+    });
+
+    return res.json({
+      status: 'success',
+      telegramSent: true,
+      messageId: result.messageId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'ไม่สามารถส่ง Telegram ได้';
+    console.error('Clinic Telegram notification failed', error);
+    return res.status(502).json({
+      status: 'error',
+      code: 'TELEGRAM_SEND_FAILED',
+      message,
+    });
+  }
 });
 
 app.get('/api/auth/google', (_req, res) => {
@@ -534,7 +624,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
       throw new Error('google_verified_email_missing');
     }
 
-    const record = registerOrFindOAuthUser('google', email, user.name || email);
+    const record = await registerOrFindOAuthUser('google', email, user.name || email);
     issueSession(res, record);
 
     return redirectToLogin(
@@ -619,7 +709,7 @@ app.get('/api/auth/line/callback', async (req, res) => {
       throw new Error('line_user_id_missing');
     }
 
-    const record = registerOrFindOAuthUser('line', userId, user.name || 'LINE User');
+    const record = await registerOrFindOAuthUser('line', userId, user.name || 'LINE User');
     issueSession(res, record);
 
     return redirectToLogin(
@@ -640,7 +730,7 @@ app.get('/api/users', (_req, res) => {
   });
 });
 
-app.post('/api/users/register', (req, res) => {
+app.post('/api/users/register', async (req, res) => {
   const { firstName, lastName, position, workGroup, affiliation, phone, emailOrId, provider } = req.body || {};
 
   if (!emailOrId || !provider) {
@@ -678,7 +768,7 @@ app.post('/api/users/register', (req, res) => {
   globalServerUsers.unshift(newUser);
 
   const nowStr = new Date().toLocaleString('th-TH');
-  sendServerTelegramNotification(
+  await sendServerTelegramNotification(
     `🔔 *[แจ้งเตือนเจ้าหน้าที่ใหม่ลงทะเบียนเข้าใช้งาน]*\n\n` +
     `👤 *ชื่อ-นามสกุล:* ${newUser.name}\n` +
     `💼 *ตำแหน่ง:* ${newUser.position}\n` +
@@ -688,7 +778,7 @@ app.post('/api/users/register', (req, res) => {
     `📧 *บัญชีใช้งาน:* ${newUser.emailOrId} (${newUser.provider.toUpperCase()})\n` +
     `⏳ *สถานะ:* รอการอนุมัติสิทธิ์จาก Super Admin\n\n` +
     `🗓️ *เวลาลงทะเบียน:* ${nowStr} น.`
-  ).catch(() => {});
+  );
 
   return res.json({
     status: 'success',
@@ -697,7 +787,7 @@ app.post('/api/users/register', (req, res) => {
   });
 });
 
-app.post('/api/users/approve', (req, res) => {
+app.post('/api/users/approve', async (req, res) => {
   const { userId, emailOrId, status, role } = req.body || {};
 
   const target = globalServerUsers.find(
@@ -713,7 +803,7 @@ app.post('/api/users/approve', (req, res) => {
 
   if (status === 'active') {
     const nowStr = new Date().toLocaleString('th-TH');
-    sendServerTelegramNotification(
+    await sendServerTelegramNotification(
       `✅ *[แจ้งเตือนการยืนยันรับ / อนุมัติสิทธิ์เจ้าหน้าที่]*\n\n` +
       `👤 *ชื่อ-นามสกุล:* ${target.name}\n` +
       `💼 *ตำแหน่ง:* ${target.position || '-'}\n` +
@@ -721,7 +811,7 @@ app.post('/api/users/approve', (req, res) => {
       `📧 *บัญชีใช้งาน:* ${target.emailOrId}\n` +
       `🟢 *สถานะใหม่:* อนุมัติสิทธิ์เข้าใช้งานแล้ว (Active)\n\n` +
       `🗓️ *เวลาอนุมัติ:* ${nowStr} น.`
-    ).catch(() => {});
+    );
   }
 
   return res.json({
