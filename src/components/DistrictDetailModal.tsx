@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DistrictSummary, Clinic } from '../types';
-import { ProgressScale } from './ProgressScale';
+import { DistrictPerformanceOverview } from './DistrictPerformanceOverview';
 
 interface DistrictDetailModalProps {
   isOpen: boolean;
@@ -13,6 +13,13 @@ interface DistrictDetailModalProps {
 
 type FilterStatus = 'all' | 'passed' | 'assessed' | 'pending';
 
+const formatUpdatedAt = (value?: string) => {
+  if (!value) return 'ยังไม่มีข้อมูล';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' }).format(date);
+};
+
 export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
   isOpen,
   onClose,
@@ -23,21 +30,51 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
   const [filterText, setFilterText] = useState('');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     const previousOverflow = document.body.style.overflow;
+    const previouslyFocusedElement = document.activeElement as HTMLElement | null;
     document.body.style.overflow = 'hidden';
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusableElements = (Array.from(
+        dialogRef.current.querySelectorAll(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+        ),
+      ) as HTMLElement[]).filter(
+        (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
+      );
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const focusIsInsideDialog = dialogRef.current.contains(document.activeElement);
+      if (event.shiftKey && (!focusIsInsideDialog || document.activeElement === firstElement)) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
+      if (previouslyFocusedElement && document.contains(previouslyFocusedElement)) {
+        previouslyFocusedElement.focus();
+      }
     };
   }, [isOpen, onClose]);
 
@@ -54,19 +91,19 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
   const statusCounts = useMemo(() => ({
     passed: districtClinics.filter((clinic) => clinic.assessmentLevel !== null && clinic.assessmentLevel >= 2).length,
     assessed: districtClinics.filter((clinic) => clinic.assessmentStatus === 'ประเมินแล้ว').length,
-    pending: districtClinics.filter((clinic) => clinic.assessmentStatus === 'รอประเมิน').length,
+    pending: districtClinics.filter((clinic) => clinic.assessmentStatus !== 'ประเมินแล้ว').length,
   }), [districtClinics]);
 
   const filteredClinics = useMemo(() => {
     const query = filterText.trim().toLocaleLowerCase('th');
     return districtClinics.filter((clinic) => {
-      const matchesText = !query || [clinic.name, clinic.licenseeName, clinic.type]
-        .some((value) => value.toLocaleLowerCase('th').includes(query));
+      const matchesText = !query || [clinic.name, clinic.licensee, clinic.type]
+        .some((value) => (value ?? '').toLocaleLowerCase('th').includes(query));
       const isPassed = clinic.assessmentLevel !== null && clinic.assessmentLevel >= 2;
       const matchesStatus = filterStatus === 'all'
         || (filterStatus === 'passed' && isPassed)
         || (filterStatus === 'assessed' && clinic.assessmentStatus === 'ประเมินแล้ว')
-        || (filterStatus === 'pending' && clinic.assessmentStatus === 'รอประเมิน');
+        || (filterStatus === 'pending' && clinic.assessmentStatus !== 'ประเมินแล้ว');
       return matchesText && matchesStatus;
     });
   }, [districtClinics, filterStatus, filterText]);
@@ -96,11 +133,12 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="district-modal-title"
+      aria-describedby="district-modal-description"
       onMouseDown={(event) => {
         if (event.currentTarget === event.target) onClose();
       }}
     >
-      <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-[0_30px_100px_rgba(2,6,23,0.35)] sm:h-auto sm:max-h-[90vh] sm:rounded-[1.75rem] sm:border sm:border-white/10">
+      <div ref={dialogRef} className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-white shadow-[0_30px_100px_rgba(2,6,23,0.35)] sm:h-auto sm:max-h-[90vh] sm:rounded-[1.75rem] sm:border sm:border-white/10">
         <header className="relative shrink-0 overflow-hidden bg-slate-950 px-5 py-5 text-white sm:px-7 sm:py-6">
           <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-emerald-500/20 blur-3xl" aria-hidden="true"></div>
           <div className="relative flex items-start justify-between gap-4">
@@ -120,7 +158,7 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
                     {summary.isTargetAchieved ? 'ผ่านเป้าหมายแล้ว' : `ต้องผ่านเพิ่ม ${remainingCount} แห่ง`}
                   </span>
                 </div>
-                <p className="mt-1 text-xs leading-5 text-slate-300 sm:text-sm">
+                <p id="district-modal-description" className="mt-1 text-xs leading-5 text-slate-300 sm:text-sm">
                   รายละเอียดผลการประเมิน RDU • {summary.totalClinics} สถานพยาบาลเป้าหมาย
                 </p>
               </div>
@@ -139,41 +177,7 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
 
         <div className="flex-1 overflow-y-auto bg-slate-50/80">
           <div className="space-y-5 p-4 sm:p-6 lg:p-7">
-            <section className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" aria-label="สรุปผลการประเมินอำเภอ">
-              {[
-                { label: 'คลินิกเป้าหมาย', value: summary.totalClinics, tone: 'text-slate-950', surface: 'bg-white border-slate-200' },
-                { label: 'ประเมินแล้ว', value: summary.assessedCount, tone: 'text-blue-800', surface: 'bg-blue-50/70 border-blue-100' },
-                { label: 'ผ่านระดับ 2+', value: summary.passedCount, tone: 'text-emerald-800', surface: 'bg-emerald-50/70 border-emerald-100' },
-                { label: 'อัตราผ่านเกณฑ์', value: `${summary.passPercentage}%`, tone: summary.isTargetAchieved ? 'text-emerald-800' : 'text-amber-800', surface: summary.isTargetAchieved ? 'bg-emerald-50/70 border-emerald-100' : 'bg-amber-50/70 border-amber-100' },
-              ].map((metric) => (
-                <div key={metric.label} className={`rounded-2xl border p-3.5 sm:p-4 ${metric.surface}`}>
-                  <span className="block text-[10px] font-semibold text-slate-500 sm:text-xs">{metric.label}</span>
-                  <strong className={`font-display mt-2 block text-2xl font-bold leading-none sm:text-3xl ${metric.tone}`}>{metric.value}</strong>
-                </div>
-              ))}
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:p-5" aria-labelledby="district-progress-title">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 id="district-progress-title" className="font-display text-sm font-bold text-slate-950 sm:text-base">ความก้าวหน้าเทียบเกณฑ์อำเภอ</h3>
-                  <p className="mt-1 text-[11px] leading-5 text-slate-500">ผลปัจจุบัน {summary.passPercentage}% เทียบกับเกณฑ์ขั้นต่ำ {summary.targetPercentage}%</p>
-                </div>
-                <span className={`self-start rounded-full px-3 py-1.5 text-[11px] font-bold ${
-                  summary.isTargetAchieved ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100' : 'bg-amber-50 text-amber-800 ring-1 ring-amber-100'
-                }`}>
-                  ผ่านแล้ว {summary.passedCount}/{summary.totalClinics} แห่ง
-                </span>
-              </div>
-              <div className="mt-4">
-                <ProgressScale
-                  value={summary.passPercentage}
-                  target={summary.targetPercentage}
-                  achieved={summary.isTargetAchieved}
-                  ariaLabel={`ความก้าวหน้าการผ่านเกณฑ์ RDU อำเภอ${summary.district}`}
-                />
-              </div>
-            </section>
+            <DistrictPerformanceOverview summary={summary} />
 
             <section className="sticky top-0 z-10 -mx-4 border-y border-slate-200 bg-white/95 px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-7 lg:px-7" aria-label="ค้นหาและกรองรายชื่อคลินิก">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -223,7 +227,7 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <h3 id="clinic-list-title" className="font-display text-sm font-bold text-slate-950 sm:text-base">รายชื่อคลินิกเอกชน</h3>
-                  <p className="mt-0.5 text-[11px] text-slate-500">พบ {filteredClinics.length} จาก {districtClinics.length} รายการ</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500" aria-live="polite">พบ {filteredClinics.length} จาก {districtClinics.length} รายการ</p>
                 </div>
                 {(filterText || filterStatus !== 'all') && (
                   <button
@@ -277,7 +281,7 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
                           <h4 className="font-display text-sm font-bold leading-6 text-slate-950 sm:text-[15px]">{clinic.name}</h4>
                           <p className="mt-1.5 flex items-start gap-2 text-[11px] leading-5 text-slate-500">
                             <i className="fa-solid fa-user-doctor mt-1 text-[9px] text-slate-400"></i>
-                            <span>{clinic.licenseeName || 'ไม่ระบุผู้รับอนุญาต'}</span>
+                            <span>{clinic.licensee || 'ไม่ระบุผู้รับอนุญาต'}</span>
                           </p>
                           <span className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
                             <i className="fa-solid fa-notes-medical text-emerald-600"></i>
@@ -286,7 +290,7 @@ export const DistrictDetailModal: React.FC<DistrictDetailModalProps> = ({
                         </div>
 
                         <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-                          <span className="text-[10px] text-slate-400">อัปเดตล่าสุด: {clinic.lastAssessedDate || 'ยังไม่มีข้อมูล'}</span>
+                          <span className="text-[10px] text-slate-400">อัปเดตล่าสุด: {formatUpdatedAt(clinic.updatedAt)}</span>
                           <button
                             type="button"
                             onClick={() => openClinic(clinic)}

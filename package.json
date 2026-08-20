@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test src/server/googleSheets.test.ts src/server/telegram.test.ts src/server/userRepository.test.ts src/server/app.test.ts"
+    "test": "npm run test:server && npm run test:ui",
+    "test:server": "node --import tsx --test src/server/googleSheets.test.ts src/server/telegram.test.ts src/server/userRepository.test.ts src/server/app.test.ts",
+    "test:ui": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -28,13 +30,20 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.5",
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "jsdom": "^26.1.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
-    "@types/express": "^4.17.21"
+    "vitest": "^3.2.7"
   }
 }

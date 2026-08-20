@@ -71,7 +71,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-xs font-medium leading-5 text-slate-500 sm:text-sm">{label}</h3>
         <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${colors.icon}`}>
-          <Icon className="size-5" aria-hidden="true" />
+          <Icon className="size-5" aria-hidden={true} />
         </span>
       </div>
       <p className={`mt-3 flex flex-wrap items-baseline gap-1 text-2xl font-bold tracking-tight sm:text-3xl ${colors.value}`}>
