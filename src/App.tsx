@@ -309,7 +309,7 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen bg-slate-50 text-slate-800 font-['Kanit',sans-serif] flex flex-col ${
+    <div className={`min-h-screen bg-slate-50 text-slate-800 flex flex-col ${
       tvMode && activeTab !== 'landing' ? 'bg-slate-900 text-slate-100' : activeTab === 'landing' ? '' : 'bg-gradient-animated'
     }`}>
       
