@@ -19,6 +19,7 @@ export type ClinicType =
 
 export interface Clinic {
   id: string;
+  version?: string;
   no: number;
   district: DistrictName;
   name: string; // ชื่อสถานพยาบาล
@@ -26,9 +27,15 @@ export interface Clinic {
   licensee: string; // ผู้รับอนุญาต
   address?: string;
   phone?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  businessStatus?: 'เปิดดำเนินการ' | 'พักใช้' | 'ปิดกิจการ' | string;
+  businessStatusNote?: string;
+  fiscalYear?: number;
   assessmentStatus: AssessmentStatus; // ประเมิน RDU
   assessmentLevel: number | null; // ระดับผลการประเมิน (1, 2, 3 หรือ null)
   passCriteria: 'ผ่าน' | 'ไม่ผ่าน' | 'รอการประเมิน'; // เกณฑ์ผ่าน (>=ระดับ2)
+  assessmentDate?: string;
   updatedAt?: string; // วันเวลาอัปเดตล่าสุด
   updatedBy?: string; // ผู้แก้ไข
   remarks?: string; // หมายเหตุ
@@ -115,4 +122,3 @@ export interface OfficerRegistrationData {
   emailOrId: string;
   provider: AuthProvider;
 }
-

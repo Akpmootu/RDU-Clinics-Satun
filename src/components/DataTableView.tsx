@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Clinic, DistrictName, AssessmentStatus } from '../types';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Clinic, DistrictName } from '../types';
 import { SATUN_DISTRICTS } from '../data/initialData';
 
 interface DataTableViewProps {
@@ -10,6 +10,10 @@ interface DataTableViewProps {
   setSearchTerm: (term: string) => void;
   onSelectClinicToEdit: (clinic: Clinic) => void;
   onOpenAddNewClinic?: () => void;
+  onEditClinic?: (clinic: Clinic) => void;
+  onDeleteClinic?: (clinic: Clinic) => void;
+  userRole?: 'admin' | 'user';
+  filterPreset?: 'all' | 'assessed' | 'passed' | 'pending';
 }
 
 export const DataTableView: React.FC<DataTableViewProps> = ({
@@ -19,6 +23,11 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   searchTerm,
   setSearchTerm,
   onSelectClinicToEdit,
+  onOpenAddNewClinic,
+  onEditClinic,
+  onDeleteClinic,
+  userRole = 'user',
+  filterPreset = 'all',
 }) => {
   // Filter states
   const [statusFilter, setStatusFilter] = useState<string>('ทั้งหมด');
@@ -32,6 +41,23 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   // Pagination state
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  useEffect(() => {
+    if (filterPreset === 'assessed') {
+      setStatusFilter('ประเมินแล้ว');
+      setLevelFilter('ทั้งหมด');
+    } else if (filterPreset === 'passed') {
+      setStatusFilter('ทั้งหมด');
+      setLevelFilter('2+');
+    } else if (filterPreset === 'pending') {
+      setStatusFilter('รอประเมิน');
+      setLevelFilter('ทั้งหมด');
+    } else {
+      setStatusFilter('ทั้งหมด');
+      setLevelFilter('ทั้งหมด');
+    }
+    setCurrentPage(1);
+  }, [filterPreset]);
 
   // Extract unique clinic types for filter dropdown
   const uniqueTypes = useMemo(() => {
@@ -154,6 +180,16 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          {userRole === 'admin' && onOpenAddNewClinic && (
+            <button
+              type="button"
+              onClick={onOpenAddNewClinic}
+              className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-md shadow-slate-950/10 transition hover:-translate-y-0.5 hover:bg-emerald-700 sm:col-auto"
+            >
+              <i className="fa-solid fa-plus text-emerald-300"></i>
+              <span>เพิ่มคลินิก</span>
+            </button>
+          )}
           <button
             onClick={exportCSV}
             className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
@@ -338,15 +374,22 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
                         รอประเมิน
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => onSelectClinicToEdit(clinic)}
-                      className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-600/20"
-                      aria-label={`ดูรายละเอียด ${clinic.name}`}
-                    >
-                      <span>ดูรายละเอียด</span>
-                      <i className="fa-solid fa-chevron-right text-[9px]"></i>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {userRole === 'admin' && onDeleteClinic && (
+                        <button type="button" onClick={() => onDeleteClinic(clinic)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700" aria-label={`ลบ ${clinic.name}`}>
+                          <i className="fa-solid fa-trash-can"></i>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => userRole === 'admin' && onEditClinic ? onEditClinic(clinic) : onSelectClinicToEdit(clinic)}
+                        className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-600/20"
+                        aria-label={`${userRole === 'admin' ? 'แก้ไข' : 'ดูรายละเอียด'} ${clinic.name}`}
+                      >
+                        <span>{userRole === 'admin' ? 'แก้ไขข้อมูล' : 'ดูรายละเอียด'}</span>
+                        <i className={`fa-solid ${userRole === 'admin' ? 'fa-pen' : 'fa-chevron-right'} text-[9px]`}></i>
+                      </button>
+                    </div>
                   </div>
                 </article>
               );
@@ -430,7 +473,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
                   </div>
                 </th>
 
-                <th className="py-3 px-3.5 text-center w-28">
+                <th className="py-3 px-3.5 text-center w-36">
                   <span>การจัดการ</span>
                 </th>
               </tr>
@@ -534,14 +577,26 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
 
                       {/* Action Button */}
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => onSelectClinicToEdit(clinic)}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 text-xs font-bold transition flex items-center justify-center gap-1.5 mx-auto border border-emerald-200/80 shadow-2xs"
-                          aria-label={`แก้ไข ${clinic.name}`}
-                        >
-                          <i className="fa-solid fa-pen-to-square"></i>
-                          <span>แก้ไข</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => userRole === 'admin' && onEditClinic ? onEditClinic(clinic) : onSelectClinicToEdit(clinic)}
+                            className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 shadow-2xs transition hover:bg-emerald-600 hover:text-white"
+                            aria-label={`${userRole === 'admin' ? 'แก้ไข' : 'ดู'} ${clinic.name}`}
+                          >
+                            <i className={`fa-solid ${userRole === 'admin' ? 'fa-pen-to-square' : 'fa-eye'}`}></i>
+                            <span>{userRole === 'admin' ? 'แก้ไข' : 'ดู'}</span>
+                          </button>
+                          {userRole === 'admin' && onDeleteClinic && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteClinic(clinic)}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-600 hover:text-white"
+                              aria-label={`ลบ ${clinic.name}`}
+                            >
+                              <i className="fa-solid fa-trash-can"></i>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

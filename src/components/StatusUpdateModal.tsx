@@ -90,20 +90,16 @@ export const StatusUpdateModal: React.FC<StatusUpdateModalProps> = ({
 
       Swal.fire({
         icon: telegramSent ? 'success' : 'warning',
-        title: 'บันทึกผลการประเมินสำเร็จ! 🎉',
-        html: `
-          <div class="text-left text-sm space-y-1">
-            <p><strong>คลินิก:</strong> ${currentClinic.name}</p>
-            <p><strong>อำเภอ:</strong> ${currentClinic.district}</p>
-            <p><strong>สถานะ:</strong> ${assessmentStatus}</p>
-            <p><strong>ระดับ:</strong> ${assessmentLevel ? `ระดับ ${assessmentLevel}` : 'ยังไม่กำหนด'}</p>
-            <p class="text-xs text-slate-500 mt-2">${
-              telegramSent
-                ? '✅ ระบบได้บันทึกประวัติลง Audit Log และส่งการแจ้งเตือนไปยังกลุ่ม Telegram เรียบร้อยแล้ว'
-                : '⚠️ บันทึกข้อมูลแล้ว แต่ส่ง Telegram ไม่สำเร็จ กรุณาแจ้งผู้ดูแลระบบ'
-            }</p>
-          </div>
-        `,
+        titleText: 'บันทึกผลการประเมินสำเร็จ',
+        text: [
+          `คลินิก: ${currentClinic.name}`,
+          `อำเภอ: ${currentClinic.district}`,
+          `สถานะ: ${assessmentStatus}`,
+          `ระดับ: ${assessmentLevel ? `ระดับ ${assessmentLevel}` : 'ยังไม่กำหนด'}`,
+          telegramSent
+            ? 'ระบบบันทึก Audit Log และส่ง Telegram เรียบร้อยแล้ว'
+            : 'บันทึกข้อมูลแล้ว แต่ส่ง Telegram ไม่สำเร็จ กรุณาแจ้งผู้ดูแลระบบ',
+        ].join('\n'),
         confirmButtonColor: '#059669',
         confirmButtonText: 'ตกลง',
       });

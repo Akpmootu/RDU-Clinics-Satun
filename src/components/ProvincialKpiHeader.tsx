@@ -9,6 +9,8 @@ interface ProvincialKpiHeaderProps {
   setSelectedDistrict: (district: DistrictName | 'ทั้งหมด') => void;
   tvMode: boolean;
   onOpenUpdateModal: () => void;
+  onNavigateToClinics: (filter: 'all' | 'assessed' | 'passed' | 'pending') => void;
+  onNavigateToAnalytics: () => void;
 }
 
 interface MetricCardProps {
@@ -19,6 +21,9 @@ interface MetricCardProps {
   icon: string;
   tone: 'slate' | 'blue' | 'emerald' | 'amber';
   badge?: string;
+  onClick: () => void;
+  actionLabel: string;
+  className?: string;
 }
 
 const metricTone = {
@@ -52,11 +57,14 @@ const MetricCard: React.FC<MetricCardProps> = ({
   icon,
   tone,
   badge,
+  onClick,
+  actionLabel,
+  className = '',
 }) => {
   const styles = metricTone[tone];
 
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] sm:p-5">
+    <button type="button" onClick={onClick} aria-label={actionLabel} className={`group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/20 sm:p-5 ${className}`}>
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-semibold leading-5 text-slate-500">{label}</p>
         <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm shadow-sm ${styles.icon}`} aria-hidden="true">
@@ -75,8 +83,9 @@ const MetricCard: React.FC<MetricCardProps> = ({
       <p className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium leading-4 ${styles.detail}`}>
         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" aria-hidden="true"></span>
         {detail}
+        <i className="fa-solid fa-arrow-right ml-auto opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" aria-hidden="true"></i>
       </p>
-    </article>
+    </button>
   );
 };
 
@@ -86,6 +95,8 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
   setSelectedDistrict,
   tvMode,
   onOpenUpdateModal,
+  onNavigateToClinics,
+  onNavigateToAnalytics,
 }) => {
   const {
     totalTargetClinics,
@@ -156,13 +167,16 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
         </div>
 
         <div className="bg-slate-50/80 p-4 sm:p-6 lg:p-7">
-          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-12">
             <MetricCard
               label="คลินิกเป้าหมายทั้งหมด"
               value={totalTargetClinics}
               detail="ครอบคลุมพื้นที่ทั้ง 7 อำเภอ"
               icon="fa-hospital"
               tone="slate"
+              onClick={() => onNavigateToClinics('all')}
+              actionLabel="ดูคลินิกเป้าหมายทั้งหมด"
+              className="lg:col-span-2"
             />
             <MetricCard
               label="ได้รับการประเมินแล้ว"
@@ -171,6 +185,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
               icon="fa-clipboard-check"
               tone="blue"
               badge={`${assessedPercentage}%`}
+              onClick={() => onNavigateToClinics('assessed')}
+              actionLabel="ดูคลินิกที่ประเมินแล้ว"
+              className="lg:col-span-3"
             />
             <MetricCard
               label="ผ่านเกณฑ์ระดับ 2 ขึ้นไป"
@@ -179,6 +196,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
               icon="fa-circle-check"
               tone="emerald"
               badge={`${overallPassPercentage}%`}
+              onClick={() => onNavigateToClinics('passed')}
+              actionLabel="ดูคลินิกที่ผ่านเกณฑ์ระดับ 2 ขึ้นไป"
+              className="lg:col-span-4"
             />
             <MetricCard
               label="รอประเมินหรือปรับปรุง"
@@ -187,6 +207,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
               icon="fa-hourglass-half"
               tone="amber"
               badge={`${pendingPercentage}%`}
+              onClick={() => onNavigateToClinics('pending')}
+              actionLabel="ดูคลินิกที่รอประเมินหรือปรับปรุง"
+              className="lg:col-span-3"
             />
           </div>
 
@@ -196,6 +219,9 @@ export const ProvincialKpiHeader: React.FC<ProvincialKpiHeaderProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-display text-base font-bold text-slate-950 sm:text-lg">ความก้าวหน้าตามเป้าหมายจังหวัด</h2>
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500">สเกล 0–100%</span>
+                  <button type="button" onClick={onNavigateToAnalytics} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-emerald-50 px-3 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100">
+                    ดูกราฟเชิงลึก <i className="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                  </button>
                 </div>
                 <p className="mt-1.5 text-xs leading-5 text-slate-500">
                   เปรียบเทียบสัดส่วนคลินิกที่ผ่านระดับ 2 ขึ้นไป กับเกณฑ์ขั้นต่ำของจังหวัดที่ {overallTargetPercentage}%

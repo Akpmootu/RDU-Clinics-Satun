@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -8,7 +8,6 @@ import { LandingHeader } from './components/LandingHeader';
 import { ProvincialKpiHeader } from './components/ProvincialKpiHeader';
 import { DistrictCardsGrid } from './components/DistrictCardsGrid';
 import { DataTableView } from './components/DataTableView';
-import { ChartsView } from './components/ChartsView';
 import { AuditLogView } from './components/AuditLogView';
 import { StatusUpdateModal } from './components/StatusUpdateModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
@@ -17,6 +16,8 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { ClinicDetailModal } from './components/ClinicDetailModal';
 import { GasScriptModal } from './components/GasScriptModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ClinicEditorModal } from './components/ClinicEditorModal';
+import { DashboardSkeleton } from './components/DashboardSkeleton';
 import { Footer } from './components/Footer';
 
 import { Clinic, DistrictName, AuditLog, AssessmentStatus, SettingsConfig, AppUser } from './types';
@@ -32,6 +33,9 @@ import {
   fetchFromGoogleSheet,
   fetchFromGas,
   updateClinicStatusApi,
+  createClinicApi,
+  updateClinicApi,
+  deleteClinicApi,
 } from './services/api';
 import {
   loadAppUsers,
@@ -39,6 +43,11 @@ import {
   saveCurrentUser,
   fetchServerUsers,
 } from './services/userService';
+import { AppTab, TAB_PATHS, clinicFilterFromSearch, tabFromPath } from './routing';
+
+const ChartsView = lazy(() =>
+  import('./components/ChartsView').then((module) => ({ default: module.ChartsView })),
+);
 
 export default function App() {
   // --- Persistent & Local States ---
@@ -53,7 +62,8 @@ export default function App() {
 
   // --- UI Layout States ---
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<string>('landing');
+  const [activeTab, setActiveTab] = useState<AppTab>(() => tabFromPath(window.location.pathname));
+  const [clinicFilterPreset, setClinicFilterPreset] = useState(() => clinicFilterFromSearch(window.location.search));
   const [authPageMode, setAuthPageMode] = useState<'login' | 'register'>('login');
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictName | 'ทั้งหมด'>('ทั้งหมด');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -68,11 +78,35 @@ export default function App() {
   const [clinicToEdit, setClinicToEdit] = useState<Clinic | null>(null);
   const [isGasCodeModalOpen, setIsGasCodeModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isClinicEditorOpen, setIsClinicEditorOpen] = useState<boolean>(false);
+  const [clinicEditorMode, setClinicEditorMode] = useState<'create' | 'edit'>('create');
+  const [clinicToManage, setClinicToManage] = useState<Clinic | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const pendingUsersCount = useMemo(
     () => appUsers.filter((user) => user.status === 'pending').length,
     [appUsers],
   );
+
+  const navigateToTab = useCallback((tab: AppTab, search = '') => {
+    setActiveTab(tab);
+    if (tab === 'clinics') {
+      setClinicFilterPreset(clinicFilterFromSearch(search));
+    }
+    const nextUrl = `${TAB_PATHS[tab]}${search}`;
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.pushState({ tab }, '', nextUrl);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(tabFromPath(window.location.pathname));
+      setClinicFilterPreset(clinicFilterFromSearch(window.location.search));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
 
   // --- Sync with the configured Google Sheet if active ---
@@ -152,7 +186,7 @@ export default function App() {
 
           if (hasAdminAccess && authStatus === 'success') {
             setActiveTab('dashboard');
-            window.history.replaceState({}, document.title, '/');
+            window.history.replaceState({}, document.title, '/dashboard');
           }
         } else if (data?.status === 'unauthenticated') {
           setCurrentUser(null);
@@ -189,6 +223,79 @@ export default function App() {
   const handleOpenClinicDetail = (clinic: Clinic) => {
     setClinicToView(clinic);
     setIsDetailModalOpen(true);
+  };
+
+  const handleOpenClinicEditor = (clinic?: Clinic) => {
+    if (userRole !== 'admin') {
+      handleOpenAuthPage('login');
+      return;
+    }
+    setClinicEditorMode(clinic ? 'edit' : 'create');
+    setClinicToManage(clinic || null);
+    setIsClinicEditorOpen(true);
+  };
+
+  const handleSaveClinic = async (clinicDraft: Partial<Clinic>) => {
+    try {
+      const savedClinic = clinicEditorMode === 'create'
+        ? await createClinicApi(clinicDraft as Omit<Clinic, 'id' | 'no' | 'passCriteria'>)
+        : await updateClinicApi({ ...clinicToManage, ...clinicDraft } as Clinic);
+
+      setClinics((current) => {
+        const next = clinicEditorMode === 'create'
+          ? [...current, savedClinic]
+          : current.map((item) => (item.id === savedClinic.id ? savedClinic : item));
+        saveLocalClinics(next);
+        return next;
+      });
+
+      await Swal.fire({
+        icon: 'success',
+        title: clinicEditorMode === 'create' ? 'เพิ่มคลินิกแล้ว' : 'อัปเดตข้อมูลแล้ว',
+        text: `${savedClinic.name} ถูกบันทึกลง Google Sheets เรียบร้อย`,
+        confirmButtonColor: '#059669',
+        timer: 1800,
+      });
+    } catch (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'บันทึกข้อมูลไม่สำเร็จ',
+        text: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
+        confirmButtonColor: '#059669',
+      });
+      throw error;
+    }
+  };
+
+  const handleDeleteClinic = async (clinic: Clinic) => {
+    if (userRole !== 'admin') return;
+    const result = await Swal.fire({
+      icon: 'warning',
+      titleText: 'ยืนยันการนำคลินิกออกจากระบบ?',
+      text: `${clinic.name} จะถูกซ่อนจากระบบ แต่ประวัติการประเมินและ Audit Log จะยังถูกเก็บไว้`,
+      showCancelButton: true,
+      confirmButtonText: 'ลบข้อมูล',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#e11d48',
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      await deleteClinicApi(clinic.id, clinic.version);
+      setClinics((current) => {
+        const next = current.filter((item) => item.id !== clinic.id);
+        saveLocalClinics(next);
+        return next;
+      });
+      await Swal.fire({ icon: 'success', title: 'ลบข้อมูลแล้ว', timer: 1400, showConfirmButton: false });
+    } catch (error) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'ลบข้อมูลไม่สำเร็จ',
+        text: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
+        confirmButtonColor: '#059669',
+      });
+    }
   };
 
   const handleOpenEditModal = (clinic: Clinic) => {
@@ -290,7 +397,7 @@ export default function App() {
 
   const handleOpenAuthPage = (mode: 'login' | 'register' = 'login') => {
     setAuthPageMode(mode);
-    setActiveTab('admin-login');
+    navigateToTab('admin-login');
   };
 
   if (activeTab === 'admin-login') {
@@ -301,8 +408,7 @@ export default function App() {
         onLogout={handleLogoutAdmin}
         onUsersUpdated={() => setAppUsers(loadAppUsers())}
         onGoBackHome={() => {
-          window.history.replaceState({}, document.title, '/');
-          setActiveTab('landing');
+          navigateToTab('landing');
         }}
       />
     );
@@ -316,7 +422,7 @@ export default function App() {
       {activeTab === 'landing' ? (
         <LandingHeader
           userRole={userRole}
-          onNavigateToDashboard={() => setActiveTab('dashboard')}
+          onNavigateToDashboard={() => navigateToTab('dashboard')}
           onOpenAdminLogin={handleOpenAuthPage}
         />
       ) : (
@@ -333,7 +439,7 @@ export default function App() {
           onLogoutAdmin={handleLogoutAdmin}
           onOpenUserManagement={handleOpenUserManagementModal}
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={(tab) => navigateToTab(tab as AppTab)}
         />
       )}
 
@@ -349,7 +455,7 @@ export default function App() {
             isOpen={sidebarOpen}
             setIsOpen={setSidebarOpen}
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={(tab) => navigateToTab(tab as AppTab)}
             selectedDistrict={selectedDistrict}
             setSelectedDistrict={setSelectedDistrict}
             totalClinicsCount={summary.totalTargetClinics}
@@ -389,13 +495,14 @@ export default function App() {
             <LandingPage
               summary={summary}
               userRole={userRole}
-              onNavigateToDashboard={() => setActiveTab('dashboard')}
-              onOpenAdminLogin={() => setActiveTab('admin-login')}
+              onNavigateToDashboard={() => navigateToTab('dashboard')}
+              onOpenAdminLogin={() => navigateToTab('admin-login')}
             />
           )}
 
           {/* Tab 1: Overview Dashboard (Executive Header + District Cards + DataTables preview) */}
           {activeTab === 'dashboard' && (
+            isLoading ? <DashboardSkeleton /> :
             <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
               <ProvincialKpiHeader
                 summary={summary}
@@ -403,6 +510,11 @@ export default function App() {
                 setSelectedDistrict={setSelectedDistrict}
                 tvMode={tvMode}
                 onOpenUpdateModal={handleOpenNewUpdateModal}
+                onNavigateToClinics={(filter) => {
+                  setSearchTerm('');
+                  navigateToTab('clinics', filter === 'all' ? '' : `?filter=${filter}`);
+                }}
+                onNavigateToAnalytics={() => navigateToTab('charts')}
               />
 
               <DistrictCardsGrid
@@ -420,6 +532,10 @@ export default function App() {
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
                 onSelectClinicToEdit={handleOpenClinicDetail}
+                onOpenAddNewClinic={() => handleOpenClinicEditor()}
+                onEditClinic={handleOpenClinicEditor}
+                onDeleteClinic={handleDeleteClinic}
+                userRole={userRole}
               />
             </div>
           )}
@@ -439,6 +555,7 @@ export default function App() {
 
           {/* Tab 3: DataTables Master Table */}
           {activeTab === 'clinics' && (
+            isLoading ? <DashboardSkeleton compact /> :
             <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
               <DataTableView
                 clinics={clinics}
@@ -447,6 +564,11 @@ export default function App() {
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
                 onSelectClinicToEdit={handleOpenClinicDetail}
+                onOpenAddNewClinic={() => handleOpenClinicEditor()}
+                onEditClinic={handleOpenClinicEditor}
+                onDeleteClinic={handleDeleteClinic}
+                userRole={userRole}
+                filterPreset={clinicFilterPreset}
               />
             </div>
           )}
@@ -454,7 +576,9 @@ export default function App() {
           {/* Tab 4: Visual Analytics & Charts */}
           {activeTab === 'charts' && (
             <div className="space-y-4 animate-fadeIn sm:space-y-5 lg:space-y-6">
-              <ChartsView summary={summary} clinics={clinics} />
+              <Suspense fallback={<DashboardSkeleton compact />}>
+                <ChartsView summary={summary} clinics={clinics} />
+              </Suspense>
             </div>
           )}
 
@@ -472,7 +596,7 @@ export default function App() {
       {activeTab !== 'landing' && (
         <BottomNav
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={(tab) => navigateToTab(tab as AppTab)}
           userRole={userRole}
           pendingUsersCount={pendingUsersCount}
           onOpenMenu={() => setSidebarOpen(true)}
@@ -524,6 +648,14 @@ export default function App() {
         allClinics={clinics}
         onSave={handleSaveClinicStatus}
         settings={settings}
+      />
+
+      <ClinicEditorModal
+        isOpen={isClinicEditorOpen}
+        mode={clinicEditorMode}
+        clinic={clinicToManage}
+        onClose={() => setIsClinicEditorOpen(false)}
+        onSave={handleSaveClinic}
       />
 
       {/* Google Apps Script Code Viewer Modal */}

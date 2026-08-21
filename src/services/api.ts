@@ -200,13 +200,54 @@ export async function fetchFromGas(webAppUrl: string) {
   }
 }
 
+async function clinicMutationRequest(
+  path: string,
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body?: unknown,
+): Promise<Clinic | null> {
+  const response = await fetch(path, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: 'same-origin',
+  });
+  const json = await response.json().catch(() => null);
+
+  if (!response.ok || json?.status !== 'success') {
+    throw new Error(json?.message || `จัดการข้อมูลคลินิกไม่สำเร็จ (HTTP ${response.status})`);
+  }
+  return json.clinic || null;
+}
+
+export async function createClinicApi(
+  clinic: Omit<Clinic, 'id' | 'no' | 'passCriteria'> & { id?: string; no?: number },
+): Promise<Clinic> {
+  const created = await clinicMutationRequest('/api/clinics', 'POST', { clinic });
+  if (!created) throw new Error('ระบบไม่ส่งข้อมูลคลินิกที่สร้างกลับมา');
+  return created;
+}
+
+export async function updateClinicApi(clinic: Clinic, expectedVersion = clinic.version): Promise<Clinic> {
+  const updated = await clinicMutationRequest(
+    `/api/clinics/${encodeURIComponent(clinic.id)}`,
+    'PATCH',
+    { clinic: { ...clinic, expectedVersion } },
+  );
+  if (!updated) throw new Error('ระบบไม่ส่งข้อมูลคลินิกที่แก้ไขกลับมา');
+  return updated;
+}
+
+export async function deleteClinicApi(clinicId: string, expectedVersion?: string): Promise<void> {
+  await clinicMutationRequest(`/api/clinics/${encodeURIComponent(clinicId)}`, 'DELETE', { expectedVersion });
+}
+
 export async function updateClinicStatusApi(
   clinic: Clinic,
   newStatus: 'ประเมินแล้ว' | 'รอประเมิน' | 'ยังไม่ประเมิน',
   newLevel: number | null,
   editedBy: string,
   remarks: string,
-  settings: SettingsConfig
+  _settings: SettingsConfig
 ): Promise<{ updatedClinic: Clinic; newLog: AuditLog; telegramSent: boolean }> {
   const nowStr = new Date().toLocaleString('th-TH', {
     year: 'numeric',
@@ -246,43 +287,10 @@ export async function updateClinicStatusApi(
 
   let telegramSent = false;
 
-  // 1. Send via GAS if Live API is active and valid URL provided
-  if (
-    settings.isLiveApiActive &&
-    settings.gasWebAppUrl &&
-    !settings.gasWebAppUrl.includes('AKfycbxSatunRDUClinics2569WebAppService') &&
-    settings.gasWebAppUrl.startsWith('https://script.google.com/macros/s/')
-  ) {
-    try {
-      const response = await fetch(settings.gasWebAppUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'updateClinicStatus',
-          data: {
-            district: clinic.district,
-            clinicId: clinic.id,
-            clinicName: clinic.name,
-            assessmentStatus: newStatus,
-            assessmentLevel: newLevel,
-            editedBy: editedBy,
-            remarks: remarks,
-          },
-        }),
-      });
-
-      if (response.ok) {
-        const resJson = await response.json().catch(() => null);
-        if (!resJson || resJson.status !== 'success') {
-          console.warn('Google Apps Script did not confirm the clinic update');
-        }
-      } else {
-        console.warn(`GAS HTTP response status: ${response.status}`);
-      }
-    } catch (err) {
-      console.warn('Live GAS update failed, saving locally:', err);
-    }
-  }
+  // 1. Persist through the authenticated backend using the stable clinicId.
+  // This avoids fuzzy clinic-name matching and keeps Google credentials off the client.
+  const persistedClinic = await updateClinicApi(updatedClinic, clinic.version);
+  Object.assign(updatedClinic, persistedClinic);
 
   // 2. Send Telegram from our server so the bot token is never exposed to the browser.
   try {
