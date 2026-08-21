@@ -8,6 +8,30 @@
     {
       "source": "/admin/:path*",
       "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/districts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/clinics",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/analytics",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/charts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/audit-log",
+      "destination": "/index.html"
     }
   ]
 }

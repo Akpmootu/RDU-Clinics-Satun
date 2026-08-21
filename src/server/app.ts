@@ -10,9 +10,14 @@ import {
   verifySignedOauthState,
 } from './auth.js';
 import {
+  ClinicMutationError,
+  ClinicMutationInput,
+  createClinic,
   DEFAULT_SHEET_GID,
   DEFAULT_SPREADSHEET_ID,
+  deleteClinic,
   loadGoogleSheetData,
+  updateClinic,
 } from './googleSheets.js';
 import {
   escapeTelegramHtml,
@@ -326,6 +331,61 @@ async function requireSuperAdmin(
   return currentUser;
 }
 
+async function requireActiveAdmin(
+  req: Request,
+  res: Response
+): Promise<ServerAppUser | null> {
+  const session = readSession(req);
+  if (!session) {
+    res.status(401).json({
+      status: 'error',
+      code: 'AUTH_REQUIRED',
+      message: 'กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าหน้าที่ก่อนจัดการข้อมูลคลินิก',
+    });
+    return null;
+  }
+
+  const currentUser = await findUser(session.provider, session.emailOrId);
+  if (
+    !currentUser ||
+    currentUser.status !== 'active' ||
+    (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')
+  ) {
+    res.status(403).json({
+      status: 'error',
+      code: 'ACTIVE_ADMIN_REQUIRED',
+      message: 'คำสั่งนี้อนุญาตเฉพาะ Admin หรือ Super Admin ที่ใช้งานอยู่',
+    });
+    return null;
+  }
+  return currentUser;
+}
+
+function clinicMutationError(res: Response, error: unknown) {
+  if (error instanceof ClinicMutationError) {
+    return res.status(error.status).json({
+      status: 'error',
+      code: error.code,
+      message: error.message,
+    });
+  }
+  console.error('Clinic mutation failed', error);
+  return res.status(502).json({
+    status: 'error',
+    code: 'CLINIC_MUTATION_FAILED',
+    message: error instanceof Error ? error.message : 'ไม่สามารถบันทึกข้อมูลคลินิกได้',
+  });
+}
+
+function clinicMutationInput(body: unknown): ClinicMutationInput {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+  const record = body as Record<string, unknown>;
+  const nested = record.clinic;
+  return nested && typeof nested === 'object' && !Array.isArray(nested)
+    ? nested as ClinicMutationInput
+    : record as ClinicMutationInput;
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -374,6 +434,47 @@ app.get('/api/google-sheet', async (req, res) => {
       code: 'GOOGLE_SHEET_SYNC_FAILED',
       message,
     });
+  }
+});
+
+app.post('/api/clinics', async (req, res) => {
+  try {
+    const actor = await requireActiveAdmin(req, res);
+    if (!actor) return;
+    const clinic = await createClinic(clinicMutationInput(req.body), actor.emailOrId);
+    return res.status(201).json({ status: 'success', clinic });
+  } catch (error) {
+    return clinicMutationError(res, error);
+  }
+});
+
+app.patch('/api/clinics/:clinicId', async (req, res) => {
+  try {
+    const actor = await requireActiveAdmin(req, res);
+    if (!actor) return;
+    const clinic = await updateClinic(
+      req.params.clinicId,
+      clinicMutationInput(req.body),
+      actor.emailOrId
+    );
+    return res.json({ status: 'success', clinic });
+  } catch (error) {
+    return clinicMutationError(res, error);
+  }
+});
+
+app.delete('/api/clinics/:clinicId', async (req, res) => {
+  try {
+    const actor = await requireActiveAdmin(req, res);
+    if (!actor) return;
+    const clinic = await deleteClinic(
+      req.params.clinicId,
+      actor.emailOrId,
+      clinicMutationInput(req.body)
+    );
+    return res.json({ status: 'success', clinic });
+  } catch (error) {
+    return clinicMutationError(res, error);
   }
 });
 

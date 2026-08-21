@@ -79,11 +79,57 @@ function maskIdentifier(identifier) {
 }
 
 // src/server/googleSheets.ts
-import { createSign } from "node:crypto";
+import { createHash, createSign, randomUUID } from "node:crypto";
 var DEFAULT_SPREADSHEET_ID = "1yLfjRD0PGXLJpsCyM8F9HsJfgb5gaDLAGhUjiB_eUY4";
 var DEFAULT_SHEET_GID = "1062888583";
 var DISTRICTS = ["\u0E40\u0E21\u0E37\u0E2D\u0E07", "\u0E17\u0E48\u0E32\u0E41\u0E1E", "\u0E25\u0E30\u0E07\u0E39", "\u0E04\u0E27\u0E19\u0E01\u0E32\u0E2B\u0E25\u0E07", "\u0E04\u0E27\u0E19\u0E42\u0E14\u0E19", "\u0E17\u0E38\u0E48\u0E07\u0E2B\u0E27\u0E49\u0E32", "\u0E21\u0E30\u0E19\u0E31\u0E07"];
+var ASSESSMENT_STATUSES = ["\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E41\u0E25\u0E49\u0E27", "\u0E23\u0E2D\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19", "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19"];
+var BUSINESS_STATUSES = ["\u0E40\u0E1B\u0E34\u0E14\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23", "\u0E1E\u0E31\u0E01\u0E43\u0E0A\u0E49", "\u0E1B\u0E34\u0E14\u0E01\u0E34\u0E08\u0E01\u0E32\u0E23"];
+var CLINIC_REGISTRY_SHEET = "ClinicRegistry";
+var ASSESSMENTS_SHEET = "Assessments";
+var ASSESSMENT_PERIODS_SHEET = "AssessmentPeriods";
 var AUDIT_LOG_SHEET = "AuditLogs";
+var WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+var ClinicMutationError = class extends Error {
+  constructor(code, message, status) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.name = "ClinicMutationError";
+  }
+};
+var DELETED_MARKER = "[SYSTEM_DELETED]";
+function isSoftDeleted(record) {
+  return record.businessStatus === "\u0E1B\u0E34\u0E14\u0E01\u0E34\u0E08\u0E01\u0E32\u0E23" && record.businessStatusNote.startsWith(DELETED_MARKER);
+}
+var REGISTRY_HEADERS = [
+  "clinicId",
+  "district",
+  "no",
+  "name",
+  "type",
+  "licensee",
+  "address",
+  "phone",
+  "latitude",
+  "longitude",
+  "businessStatus",
+  "businessStatusNote",
+  "updatedAt",
+  "updatedBy"
+];
+var ASSESSMENT_HEADERS = [
+  "id",
+  "fiscalYear",
+  "clinicId",
+  "assessmentStatus",
+  "assessmentLevel",
+  "passCriteria",
+  "assessmentDate",
+  "remarks",
+  "updatedAt",
+  "updatedBy"
+];
 var HEADER_ALIASES = {
   no: ["\u0E25\u0E33\u0E14\u0E31\u0E1A\u0E17\u0E35\u0E48", "\u0E25\u0E33\u0E14\u0E31\u0E1A", "\u0E17\u0E35\u0E48"],
   district: ["\u0E2D\u0E33\u0E40\u0E20\u0E2D", "\u0E40\u0E02\u0E15\u0E2D\u0E33\u0E40\u0E20\u0E2D"],
@@ -96,28 +142,20 @@ var HEADER_ALIASES = {
   remarks: ["\u0E2B\u0E21\u0E32\u0E22\u0E40\u0E2B\u0E15\u0E38", "\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01\u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E15\u0E34\u0E21"]
 };
 function normalizeCell(value) {
-  return String(value ?? "").replace(/\uFEFF/g, "").replace(/\s+/g, " ").trim();
+  return String(value ?? "").replace(/\uFEFF/g, "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim();
 }
 function normalizeHeader(value) {
   return normalizeCell(value).toLocaleLowerCase("th-TH").replace(/[()≥>=:_\-./\s]+/g, "");
 }
 function matchesHeader(value, aliases) {
   const normalized = normalizeHeader(value);
-  return aliases.some((alias) => {
-    const normalizedAlias = normalizeHeader(alias);
-    return normalized === normalizedAlias || normalized.includes(normalizedAlias);
-  });
+  return aliases.some((alias) => normalized === normalizeHeader(alias) || normalized.includes(normalizeHeader(alias)));
 }
 function findHeaderRow(rows) {
-  const searchLimit = Math.min(rows.length, 12);
-  for (let rowIndex = 0; rowIndex < searchLimit; rowIndex += 1) {
+  for (let rowIndex = 0; rowIndex < Math.min(rows.length, 12); rowIndex += 1) {
     const row = rows[rowIndex] || [];
     if (row.length < 2) continue;
-    const hasName = row.some((cell) => matchesHeader(cell, HEADER_ALIASES.name));
-    const hasSupportingColumn = row.some(
-      (cell) => matchesHeader(cell, HEADER_ALIASES.type) || matchesHeader(cell, HEADER_ALIASES.status) || matchesHeader(cell, HEADER_ALIASES.level)
-    );
-    if (hasName && hasSupportingColumn) return rowIndex;
+    if (row.some((cell) => matchesHeader(cell, HEADER_ALIASES.name)) && row.some((cell) => matchesHeader(cell, HEADER_ALIASES.type) || matchesHeader(cell, HEADER_ALIASES.status) || matchesHeader(cell, HEADER_ALIASES.level))) return rowIndex;
   }
   return -1;
 }
@@ -128,26 +166,17 @@ function findColumn(header, aliases, fallback) {
 function normalizeDistrict(value, fallback) {
   const candidate = normalizeCell(value || fallback).replace(/^อำเภอ/, "").replace(/^อ\./, "").trim();
   if (candidate === "\u0E40\u0E21\u0E37\u0E2D\u0E07\u0E2A\u0E15\u0E39\u0E25") return "\u0E40\u0E21\u0E37\u0E2D\u0E07";
-  const exact = DISTRICTS.find((district) => candidate === district);
-  if (exact) return exact;
-  const partial = DISTRICTS.find(
-    (district) => candidate.includes(district) || district.includes(candidate)
-  );
-  return partial || null;
+  return DISTRICTS.find((district) => candidate === district) || DISTRICTS.find((district) => candidate.includes(district) || district.includes(candidate)) || null;
 }
 function normalizeAssessmentLevel(value) {
   const text = normalizeCell(value);
   if (!text || text === "-" || /ยังไม่|รอ/.test(text)) return null;
-  const match = text.match(/[1-3]/);
-  if (!match) return null;
-  const level = Number(match[0]);
+  const level = Number(text.match(/[1-3]/)?.[0]);
   return Number.isInteger(level) && level >= 1 && level <= 3 ? level : null;
 }
 function normalizeAssessmentStatus(value, level) {
   const text = normalizeCell(value);
-  if (level !== null || /ประเมินแล้ว|ดำเนินการแล้ว|แล้วเสร็จ/.test(text)) {
-    return "\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E41\u0E25\u0E49\u0E27";
-  }
+  if (level !== null || /ประเมินแล้ว|ดำเนินการแล้ว|แล้วเสร็จ/.test(text)) return "\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E41\u0E25\u0E49\u0E27";
   if (/ยังไม่ประเมิน/.test(text)) return "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19";
   return "\u0E23\u0E2D\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19";
 }
@@ -158,34 +187,35 @@ function normalizePassCriteria(value, level) {
   if (/ผ่าน/.test(text)) return "\u0E1C\u0E48\u0E32\u0E19";
   return "\u0E23\u0E2D\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19";
 }
-function isSummaryRow(name, firstCell) {
-  return !name || name.includes("\u0E20\u0E32\u0E1E\u0E23\u0E27\u0E21") || name.startsWith("\u0E23\u0E27\u0E21") || firstCell.includes("\u0E20\u0E32\u0E1E\u0E23\u0E27\u0E21") || firstCell.startsWith("\u0E23\u0E27\u0E21");
-}
 function safePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(normalizeCell(value), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
+function nullableNumber(value) {
+  const text = normalizeCell(value);
+  if (!text) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function headerIndexes(rows) {
+  return new Map((rows[0] || []).map((cell, index) => [normalizeCell(cell), index]));
+}
+function rowValue(row, indexes, name) {
+  return normalizeCell(row[indexes.get(name) ?? -1]);
+}
 function parseCsv(csv) {
   const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
+  let row = [], field = "", inQuotes = false;
   for (let index = 0; index < csv.length; index += 1) {
     const character = csv[index];
     if (inQuotes) {
       if (character === '"' && csv[index + 1] === '"') {
         field += '"';
         index += 1;
-      } else if (character === '"') {
-        inQuotes = false;
-      } else {
-        field += character;
-      }
-      continue;
-    }
-    if (character === '"') {
-      inQuotes = true;
-    } else if (character === ",") {
+      } else if (character === '"') inQuotes = false;
+      else field += character;
+    } else if (character === '"') inQuotes = true;
+    else if (character === ",") {
       row.push(field);
       field = "";
     } else if (character === "\n") {
@@ -193,9 +223,7 @@ function parseCsv(csv) {
       rows.push(row);
       row = [];
       field = "";
-    } else {
-      field += character;
-    }
+    } else field += character;
   }
   if (field.length > 0 || row.length > 0) {
     row.push(field.replace(/\r$/, ""));
@@ -205,9 +233,9 @@ function parseCsv(csv) {
 }
 function parseClinicRows(rows, options = {}) {
   const headerRowIndex = findHeaderRow(rows);
-  const usesFallbackLayout = headerRowIndex < 0;
-  const header = usesFallbackLayout ? [] : rows[headerRowIndex] || [];
-  const dataStart = usesFallbackLayout ? Math.min(2, rows.length) : headerRowIndex + 1;
+  const fallback = headerRowIndex < 0;
+  const header = fallback ? [] : rows[headerRowIndex] || [];
+  const dataStart = fallback ? Math.min(2, rows.length) : headerRowIndex + 1;
   const columns = {
     no: findColumn(header, HEADER_ALIASES.no, 0),
     district: findColumn(header, HEADER_ALIASES.district, -1),
@@ -224,17 +252,13 @@ function parseClinicRows(rows, options = {}) {
     const row = rows[rowIndex] || [];
     const name = normalizeCell(row[columns.name]);
     const firstCell = normalizeCell(row[0]);
-    if (isSummaryRow(name, firstCell)) continue;
-    const district = normalizeDistrict(
-      columns.district >= 0 ? row[columns.district] : void 0,
-      options.district
-    );
+    if (!name || name.includes("\u0E20\u0E32\u0E1E\u0E23\u0E27\u0E21") || name.startsWith("\u0E23\u0E27\u0E21") || firstCell.includes("\u0E20\u0E32\u0E1E\u0E23\u0E27\u0E21") || firstCell.startsWith("\u0E23\u0E27\u0E21")) continue;
+    const district = normalizeDistrict(columns.district >= 0 ? row[columns.district] : void 0, options.district);
     if (!district) continue;
     const assessmentLevel = normalizeAssessmentLevel(row[columns.level]);
     const no = safePositiveInteger(row[columns.no], clinics.length + 1);
-    const idPrefix = options.idPrefix || district;
     clinics.push({
-      id: `STN-${idPrefix}-${no}`,
+      id: `STN-${options.idPrefix || district}-${no}`,
       no,
       district,
       name,
@@ -248,9 +272,133 @@ function parseClinicRows(rows, options = {}) {
   }
   return clinics;
 }
+function parseClinicRegistryRows(rows) {
+  if (rows.length < 2) return [];
+  const indexes = headerIndexes(rows);
+  return rows.slice(1).flatMap((row, index) => {
+    const clinicId = rowValue(row, indexes, "clinicId");
+    const district = normalizeDistrict(rowValue(row, indexes, "district"));
+    const name = rowValue(row, indexes, "name");
+    if (!clinicId || !district || !name) return [];
+    const rawBusinessStatus = rowValue(row, indexes, "businessStatus");
+    const businessStatus = BUSINESS_STATUSES.includes(rawBusinessStatus) ? rawBusinessStatus : "\u0E40\u0E1B\u0E34\u0E14\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23";
+    return [{
+      clinicId,
+      district,
+      no: safePositiveInteger(rowValue(row, indexes, "no"), index + 1),
+      name,
+      type: rowValue(row, indexes, "type") || "\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01\u0E40\u0E27\u0E0A\u0E01\u0E23\u0E23\u0E21",
+      licensee: rowValue(row, indexes, "licensee") || "-",
+      address: rowValue(row, indexes, "address"),
+      phone: rowValue(row, indexes, "phone"),
+      latitude: nullableNumber(rowValue(row, indexes, "latitude")),
+      longitude: nullableNumber(rowValue(row, indexes, "longitude")),
+      businessStatus,
+      businessStatusNote: rowValue(row, indexes, "businessStatusNote"),
+      updatedAt: rowValue(row, indexes, "updatedAt"),
+      updatedBy: rowValue(row, indexes, "updatedBy"),
+      rowNumber: index + 2
+    }];
+  });
+}
+function parseAssessmentRows(rows) {
+  if (rows.length < 2) return [];
+  const indexes = headerIndexes(rows);
+  return rows.slice(1).flatMap((row, index) => {
+    const clinicId = rowValue(row, indexes, "clinicId");
+    const fiscalYear = Number.parseInt(rowValue(row, indexes, "fiscalYear"), 10);
+    if (!clinicId || !Number.isInteger(fiscalYear)) return [];
+    const level = normalizeAssessmentLevel(rowValue(row, indexes, "assessmentLevel"));
+    return [{
+      id: rowValue(row, indexes, "id") || `assessment-${clinicId}-${fiscalYear}`,
+      fiscalYear,
+      clinicId,
+      assessmentStatus: normalizeAssessmentStatus(rowValue(row, indexes, "assessmentStatus"), level),
+      assessmentLevel: level,
+      passCriteria: normalizePassCriteria(rowValue(row, indexes, "passCriteria"), level),
+      assessmentDate: rowValue(row, indexes, "assessmentDate"),
+      remarks: rowValue(row, indexes, "remarks"),
+      updatedAt: rowValue(row, indexes, "updatedAt"),
+      updatedBy: rowValue(row, indexes, "updatedBy"),
+      rowNumber: index + 2
+    }];
+  });
+}
+function parseAssessmentPeriodRows(rows) {
+  if (rows.length < 2) return [];
+  const indexes = headerIndexes(rows);
+  return rows.slice(1).flatMap((row) => {
+    const fiscalYear = Number.parseInt(rowValue(row, indexes, "fiscalYear"), 10);
+    if (!Number.isInteger(fiscalYear)) return [];
+    return [{ fiscalYear, label: rowValue(row, indexes, "label"), startDate: rowValue(row, indexes, "startDate"), endDate: rowValue(row, indexes, "endDate"), targetPercentage: nullableNumber(rowValue(row, indexes, "targetPercentage")) }];
+  });
+}
+function selectedFiscalYear(assessments, periods, now = /* @__PURE__ */ new Date()) {
+  const date = now.toISOString().slice(0, 10);
+  const active = periods.filter((period) => period.startDate && period.endDate && period.startDate <= date && date <= period.endDate).map((period) => period.fiscalYear);
+  if (active.length) return Math.max(...active);
+  const years = [...assessments.map((item) => item.fiscalYear), ...periods.map((item) => item.fiscalYear)];
+  return years.length ? Math.max(...years) : void 0;
+}
+function mergeClinicData(registry, assessments, periods = []) {
+  const preferredYear = selectedFiscalYear(assessments, periods);
+  return registry.map((record) => {
+    const candidates = assessments.filter((item) => item.clinicId === record.clinicId);
+    const assessment = candidates.find((item) => item.fiscalYear === preferredYear) || candidates.sort((a, b) => b.fiscalYear - a.fiscalYear || b.updatedAt.localeCompare(a.updatedAt))[0];
+    const timestampVersion = assessment?.updatedAt || record.updatedAt;
+    const version = timestampVersion || `legacy_${createHash("sha256").update(JSON.stringify({
+      clinicId: record.clinicId,
+      district: record.district,
+      no: record.no,
+      name: record.name,
+      type: record.type,
+      licensee: record.licensee,
+      address: record.address,
+      phone: record.phone,
+      latitude: record.latitude,
+      longitude: record.longitude,
+      businessStatus: record.businessStatus,
+      businessStatusNote: record.businessStatusNote,
+      assessment: assessment ? {
+        id: assessment.id,
+        fiscalYear: assessment.fiscalYear,
+        assessmentStatus: assessment.assessmentStatus,
+        assessmentLevel: assessment.assessmentLevel,
+        passCriteria: assessment.passCriteria,
+        assessmentDate: assessment.assessmentDate,
+        remarks: assessment.remarks
+      } : null
+    })).digest("hex").slice(0, 24)}`;
+    return {
+      id: record.clinicId,
+      version,
+      no: record.no,
+      district: record.district,
+      name: record.name,
+      type: record.type,
+      licensee: record.licensee,
+      address: record.address,
+      phone: record.phone,
+      latitude: record.latitude,
+      longitude: record.longitude,
+      businessStatus: record.businessStatus,
+      businessStatusNote: record.businessStatusNote,
+      updatedAt: assessment?.updatedAt || record.updatedAt,
+      updatedBy: assessment?.updatedBy || record.updatedBy,
+      fiscalYear: assessment?.fiscalYear || preferredYear,
+      assessmentDate: assessment?.assessmentDate || "",
+      assessmentStatus: assessment?.assessmentStatus || "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19",
+      assessmentLevel: assessment?.assessmentLevel ?? null,
+      passCriteria: assessment?.passCriteria || "\u0E23\u0E2D\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19",
+      remarks: assessment?.remarks || ""
+    };
+  });
+}
 function parseAuditLogRows(rows) {
-  if (rows.length <= 1) return [];
-  return rows.slice(1).filter((row) => normalizeCell(row[0])).map((row) => ({
+  return rows.slice(1).filter((row) => {
+    const id = normalizeCell(row[0]);
+    return id && !id.startsWith("lock_") && !id.startsWith("unlock_");
+  }).map((row) => ({
     id: normalizeCell(row[0]),
     timestamp: normalizeCell(row[1]),
     district: normalizeCell(row[2]),
@@ -266,10 +414,11 @@ function parseAuditLogRows(rows) {
 }
 function validateSpreadsheetId(spreadsheetId2) {
   const value = spreadsheetId2.trim();
-  if (!/^[a-zA-Z0-9_-]{20,100}$/.test(value)) {
-    throw new Error("Spreadsheet ID \u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07");
-  }
+  if (!/^[a-zA-Z0-9_-]{20,100}$/.test(value)) throw new Error("Spreadsheet ID \u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07");
   return value;
+}
+function configuredSpreadsheetId() {
+  return validateSpreadsheetId(process.env.CLINIC_SPREADSHEET_ID?.trim() || DEFAULT_SPREADSHEET_ID);
 }
 function base64Url(value) {
   return Buffer.from(value).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -277,99 +426,71 @@ function base64Url(value) {
 async function getServiceAccountAccessToken(scope = "https://www.googleapis.com/auth/spreadsheets.readonly") {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
   const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n").trim();
-  if (!clientEmail || !privateKey) {
-    throw new Error("\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E44\u0E14\u0E49\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32 Google service account");
-  }
+  if (!clientEmail || !privateKey) throw new Error("\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E44\u0E14\u0E49\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32 Google service account");
   const issuedAt = Math.floor(Date.now() / 1e3);
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const payload = base64Url(
-    JSON.stringify({
-      iss: clientEmail,
-      scope,
-      aud: "https://oauth2.googleapis.com/token",
-      iat: issuedAt,
-      exp: issuedAt + 3600
-    })
-  );
+  const payload = base64Url(JSON.stringify({ iss: clientEmail, scope, aud: "https://oauth2.googleapis.com/token", iat: issuedAt, exp: issuedAt + 3600 }));
   const unsignedToken = `${header}.${payload}`;
   const signer = createSign("RSA-SHA256");
   signer.update(unsignedToken);
   signer.end();
   const signature = signer.sign(privateKey, "base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: `${unsignedToken}.${signature}`
-    })
-  });
+  const response = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${unsignedToken}.${signature}` }) });
   const json = await response.json();
-  if (!response.ok || !json.access_token) {
-    throw new Error(
-      json.error_description || json.error || "Google service account authentication failed"
-    );
-  }
+  if (!response.ok || !json.access_token) throw new Error(json.error_description || json.error || "Google service account authentication failed");
   return json.access_token;
 }
-function sheetRange(sheetName) {
-  return `'${sheetName.replace(/'/g, "''")}'`;
+function sheetRange(sheetName, range) {
+  const name = `'${sheetName.replace(/'/g, "''")}'`;
+  return range ? `${name}!${range}` : name;
+}
+async function googleRequest(spreadsheetId2, path2, init, token) {
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId2)}${path2}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, ...init.body ? { "Content-Type": "application/json" } : {}, ...init.headers }
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = json.error?.message || `Google Sheets API \u0E15\u0E2D\u0E1A\u0E01\u0E25\u0E31\u0E1A HTTP ${response.status}`;
+    throw new Error(response.status === 403 ? `${message} \u0E01\u0E23\u0E38\u0E13\u0E32\u0E41\u0E0A\u0E23\u0E4C Google Sheet \u0E43\u0E2B\u0E49 service account \u0E40\u0E1B\u0E47\u0E19 Editor` : message);
+  }
+  return json;
+}
+async function batchGet(spreadsheetId2, token, sheetNames) {
+  const params = new URLSearchParams({ majorDimension: "ROWS" });
+  sheetNames.forEach((name) => params.append("ranges", sheetRange(name)));
+  const result = await googleRequest(spreadsheetId2, `/values:batchGet?${params}`, {}, token);
+  return sheetNames.map((_, index) => result.valueRanges?.[index]?.values || []);
 }
 async function loadViaGoogleSheetsApi(spreadsheetId2) {
-  const accessToken = await getServiceAccountAccessToken();
-  const url = new URL(
-    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId2)}/values:batchGet`
-  );
-  for (const sheetName of [...DISTRICTS, AUDIT_LOG_SHEET]) {
-    url.searchParams.append("ranges", sheetRange(sheetName));
+  const token = await getServiceAccountAccessToken();
+  try {
+    const [registryRows, assessmentRows, periodRows, auditRows] = await batchGet(spreadsheetId2, token, [CLINIC_REGISTRY_SHEET, ASSESSMENTS_SHEET, ASSESSMENT_PERIODS_SHEET, AUDIT_LOG_SHEET]);
+    const registry = parseClinicRegistryRows(registryRows).filter((record) => !isSoftDeleted(record));
+    if (registry.length || registryRows.length) {
+      const assessmentPeriods = parseAssessmentPeriodRows(periodRows);
+      return { clinics: mergeClinicData(registry, parseAssessmentRows(assessmentRows), assessmentPeriods), auditLogs: parseAuditLogRows(auditRows), assessmentPeriods, source: "google-sheets-api" };
+    }
+  } catch (error) {
+    console.warn("Confirmed clinic sheets unavailable; trying legacy district tabs", error);
   }
-  url.searchParams.set("majorDimension", "ROWS");
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  const json = await response.json();
-  if (!response.ok) {
-    throw new Error(json.error?.message || `Google Sheets API \u0E15\u0E2D\u0E1A\u0E01\u0E25\u0E31\u0E1A HTTP ${response.status}`);
-  }
-  const valueRanges = json.valueRanges || [];
-  const clinics = DISTRICTS.flatMap(
-    (district, index) => parseClinicRows(valueRanges[index]?.values || [], {
-      district,
-      idPrefix: district
-    })
-  );
-  const auditLogs = parseAuditLogRows(valueRanges[DISTRICTS.length]?.values || []);
-  return {
-    clinics: deduplicateClinics(clinics),
-    auditLogs,
-    source: "google-sheets-api"
-  };
+  const rows = await batchGet(spreadsheetId2, token, [...DISTRICTS, AUDIT_LOG_SHEET]);
+  const clinics = DISTRICTS.flatMap((district, index) => parseClinicRows(rows[index] || [], { district, idPrefix: district }));
+  return { clinics: deduplicateClinics(clinics), auditLogs: parseAuditLogRows(rows[DISTRICTS.length] || []), source: "google-sheets-api" };
 }
 async function fetchPublicCsv(spreadsheetId2, selector) {
-  const url = new URL(
-    `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId2)}/gviz/tq`
-  );
+  const url = new URL(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId2)}/gviz/tq`);
   url.searchParams.set("tqx", "out:csv");
   if (selector.sheet) url.searchParams.set("sheet", selector.sheet);
   if (selector.gid) url.searchParams.set("gid", selector.gid);
-  const response = await fetch(url, {
-    headers: {
-      Accept: "text/csv,text/plain;q=0.9,*/*;q=0.1",
-      "User-Agent": "RDU-Clinics-Satun/1.0"
-    },
-    redirect: "follow"
-  });
+  const response = await fetch(url, { headers: { Accept: "text/csv,text/plain;q=0.9,*/*;q=0.1", "User-Agent": "RDU-Clinics-Satun/1.0" }, redirect: "follow" });
   if (!response.ok) {
-    const error = new Error(
-      response.status === 401 || response.status === 403 ? "Google Sheet \u0E22\u0E31\u0E07\u0E08\u0E33\u0E01\u0E31\u0E14\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E01\u0E32\u0E23\u0E2D\u0E48\u0E32\u0E19 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E41\u0E0A\u0E23\u0E4C\u0E43\u0E2B\u0E49 service account \u0E2B\u0E23\u0E37\u0E2D\u0E40\u0E1B\u0E34\u0E14\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E1C\u0E39\u0E49\u0E17\u0E35\u0E48\u0E21\u0E35\u0E25\u0E34\u0E07\u0E01\u0E4C\u0E40\u0E1B\u0E47\u0E19\u0E1C\u0E39\u0E49\u0E21\u0E35\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E14\u0E39" : `Google Sheets CSV \u0E15\u0E2D\u0E1A\u0E01\u0E25\u0E31\u0E1A HTTP ${response.status}`
-    );
+    const error = new Error(response.status === 401 || response.status === 403 ? "Google Sheet \u0E22\u0E31\u0E07\u0E08\u0E33\u0E01\u0E31\u0E14\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E01\u0E32\u0E23\u0E2D\u0E48\u0E32\u0E19 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E41\u0E0A\u0E23\u0E4C\u0E43\u0E2B\u0E49 service account \u0E2B\u0E23\u0E37\u0E2D\u0E40\u0E1B\u0E34\u0E14\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E1C\u0E39\u0E49\u0E17\u0E35\u0E48\u0E21\u0E35\u0E25\u0E34\u0E07\u0E01\u0E4C\u0E40\u0E1B\u0E47\u0E19\u0E1C\u0E39\u0E49\u0E21\u0E35\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E14\u0E39" : `Google Sheets CSV \u0E15\u0E2D\u0E1A\u0E01\u0E25\u0E31\u0E1A HTTP ${response.status}`);
     Object.assign(error, { status: response.status });
     throw error;
   }
   const text = await response.text();
-  if (/^\s*</.test(text) || /google\.visualization\.Query\.setResponse/.test(text)) {
-    throw new Error("Google Sheets \u0E44\u0E21\u0E48\u0E44\u0E14\u0E49\u0E2A\u0E48\u0E07\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25 CSV \u0E01\u0E25\u0E31\u0E1A\u0E21\u0E32");
-  }
+  if (/^\s*</.test(text) || /google\.visualization\.Query\.setResponse/.test(text)) throw new Error("Google Sheets \u0E44\u0E21\u0E48\u0E44\u0E14\u0E49\u0E2A\u0E48\u0E07\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25 CSV \u0E01\u0E25\u0E31\u0E1A\u0E21\u0E32");
   return text;
 }
 function deduplicateClinics(clinics) {
@@ -382,46 +503,26 @@ function deduplicateClinics(clinics) {
   });
 }
 async function loadViaPublicCsv(spreadsheetId2, gid) {
-  const districtResults = await Promise.allSettled(
-    DISTRICTS.map(async (district) => {
-      const csv = await fetchPublicCsv(spreadsheetId2, { sheet: district });
-      return parseClinicRows(parseCsv(csv), { district, idPrefix: district });
-    })
-  );
-  let clinics = districtResults.flatMap(
-    (result) => result.status === "fulfilled" ? result.value : []
-  );
-  if (clinics.length === 0) {
-    const csv = await fetchPublicCsv(spreadsheetId2, { gid });
-    clinics = parseClinicRows(parseCsv(csv), { idPrefix: `GID-${gid}` });
-  }
+  const results = await Promise.allSettled(DISTRICTS.map(async (district) => parseClinicRows(parseCsv(await fetchPublicCsv(spreadsheetId2, { sheet: district })), { district, idPrefix: district })));
+  let clinics = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  if (!clinics.length) clinics = parseClinicRows(parseCsv(await fetchPublicCsv(spreadsheetId2, { gid })), { idPrefix: `GID-${gid}` });
   let auditLogs = [];
   try {
-    const auditCsv = await fetchPublicCsv(spreadsheetId2, { sheet: AUDIT_LOG_SHEET });
-    auditLogs = parseAuditLogRows(parseCsv(auditCsv));
+    auditLogs = parseAuditLogRows(parseCsv(await fetchPublicCsv(spreadsheetId2, { sheet: AUDIT_LOG_SHEET })));
   } catch {
   }
-  const uniqueClinics = deduplicateClinics(clinics);
-  if (uniqueClinics.length === 0) {
-    const firstError = districtResults.find(
-      (result) => result.status === "rejected"
-    );
-    if (firstError) throw firstError.reason;
+  clinics = deduplicateClinics(clinics);
+  if (!clinics.length) {
+    const rejected = results.find((result) => result.status === "rejected");
+    if (rejected) throw rejected.reason;
     throw new Error("\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01\u0E43\u0E19 Google Sheet");
   }
-  return {
-    clinics: uniqueClinics,
-    auditLogs,
-    source: "public-csv"
-  };
+  return { clinics, auditLogs, source: "public-csv" };
 }
 async function loadGoogleSheetData(spreadsheetId2 = DEFAULT_SPREADSHEET_ID, gid = DEFAULT_SHEET_GID) {
   const validSpreadsheetId = validateSpreadsheetId(spreadsheetId2);
   const validGid = /^\d+$/.test(gid) ? gid : DEFAULT_SHEET_GID;
-  const hasServiceAccount = Boolean(
-    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
-  );
-  if (hasServiceAccount) {
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
     try {
       return await loadViaGoogleSheetsApi(validSpreadsheetId);
     } catch (error) {
@@ -429,6 +530,227 @@ async function loadGoogleSheetData(spreadsheetId2 = DEFAULT_SPREADSHEET_ID, gid 
     }
   }
   return loadViaPublicCsv(validSpreadsheetId, validGid);
+}
+function clean(value, field, max, required = false) {
+  const result = normalizeCell(value).slice(0, max);
+  if (required && !result) throw new ClinicMutationError("INVALID_CLINIC", `\u0E01\u0E23\u0E38\u0E13\u0E32\u0E23\u0E30\u0E1A\u0E38 ${field}`, 400);
+  return result;
+}
+function validateClinicId(value) {
+  const id = clean(value, "clinicId", 100, true);
+  if (!/^[A-Za-z0-9_-]{3,100}$/.test(id)) throw new ClinicMutationError("INVALID_CLINIC_ID", "clinicId \u0E15\u0E49\u0E2D\u0E07\u0E1B\u0E23\u0E30\u0E01\u0E2D\u0E1A\u0E14\u0E49\u0E27\u0E22\u0E15\u0E31\u0E27\u0E2D\u0E31\u0E01\u0E29\u0E23 \u0E15\u0E31\u0E27\u0E40\u0E25\u0E02 _ \u0E2B\u0E23\u0E37\u0E2D -", 400);
+  return id;
+}
+function numberInRange(value, field, min, max, nullable = false) {
+  if ((value === "" || value === null || value === void 0) && nullable) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) throw new ClinicMutationError("INVALID_CLINIC", `${field} \u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07`, 400);
+  return parsed;
+}
+function sanitizeClinic(input, base, actor, isCreate) {
+  const pick = (key) => Object.prototype.hasOwnProperty.call(input, key) ? input[key] : void 0;
+  const districtRaw = pick("district") ?? base?.district;
+  const district = normalizeDistrict(districtRaw);
+  if (!district || normalizeCell(districtRaw) !== district) throw new ClinicMutationError("INVALID_CLINIC", "\u0E2D\u0E33\u0E40\u0E20\u0E2D\u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07", 400);
+  const statusRaw = clean(pick("assessmentStatus") ?? base?.assessmentStatus ?? "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19", "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19", 30, true);
+  if (!ASSESSMENT_STATUSES.includes(statusRaw)) throw new ClinicMutationError("INVALID_CLINIC", "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07", 400);
+  const status = statusRaw;
+  let level = (pick("assessmentLevel") !== void 0 ? pick("assessmentLevel") : base?.assessmentLevel) ?? null;
+  level = level === null ? null : numberInRange(level, "\u0E23\u0E30\u0E14\u0E31\u0E1A\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19", 1, 3);
+  if (status !== "\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E41\u0E25\u0E49\u0E27") level = null;
+  const passCriteria = status === "\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E41\u0E25\u0E49\u0E27" ? level !== null && level >= 2 ? "\u0E1C\u0E48\u0E32\u0E19" : "\u0E44\u0E21\u0E48\u0E1C\u0E48\u0E32\u0E19" : "\u0E23\u0E2D\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19";
+  const requestedPass = pick("passCriteria");
+  if (requestedPass !== void 0 && clean(requestedPass, "\u0E40\u0E01\u0E13\u0E11\u0E4C\u0E1C\u0E48\u0E32\u0E19", 30, true) !== passCriteria) {
+    throw new ClinicMutationError("INVALID_CLINIC", "\u0E40\u0E01\u0E13\u0E11\u0E4C\u0E1C\u0E48\u0E32\u0E19\u0E44\u0E21\u0E48\u0E2A\u0E2D\u0E14\u0E04\u0E25\u0E49\u0E2D\u0E07\u0E01\u0E31\u0E1A\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E2B\u0E23\u0E37\u0E2D\u0E23\u0E30\u0E14\u0E31\u0E1A\u0E01\u0E32\u0E23\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19", 400);
+  }
+  const businessRaw = clean(pick("businessStatus") ?? base?.businessStatus ?? "\u0E40\u0E1B\u0E34\u0E14\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23", "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E34\u0E08\u0E01\u0E32\u0E23", 30, true);
+  if (!BUSINESS_STATUSES.includes(businessRaw)) throw new ClinicMutationError("INVALID_CLINIC", "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E34\u0E08\u0E01\u0E32\u0E23\u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07", 400);
+  const fiscalYear = Math.trunc(numberInRange(pick("fiscalYear") ?? base?.fiscalYear ?? 2569, "\u0E1B\u0E35\u0E07\u0E1A\u0E1B\u0E23\u0E30\u0E21\u0E32\u0E13", 2400, 3e3));
+  const no = Math.trunc(numberInRange(pick("no") ?? base?.no ?? 1, "\u0E25\u0E33\u0E14\u0E31\u0E1A", 1, 1e5));
+  const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return {
+    id: isCreate ? validateClinicId(input.clinicId || `STN-${randomUUID()}`) : validateClinicId(base?.id),
+    version: updatedAt,
+    no,
+    district,
+    name: clean(pick("name") ?? base?.name, "\u0E0A\u0E37\u0E48\u0E2D\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01", 300, true),
+    type: clean(pick("type") ?? base?.type, "\u0E1B\u0E23\u0E30\u0E40\u0E20\u0E17\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01", 200, true),
+    licensee: clean(pick("licensee") ?? base?.licensee, "\u0E1C\u0E39\u0E49\u0E23\u0E31\u0E1A\u0E2D\u0E19\u0E38\u0E0D\u0E32\u0E15", 300, true),
+    address: clean(pick("address") ?? base?.address, "\u0E17\u0E35\u0E48\u0E2D\u0E22\u0E39\u0E48", 1e3),
+    phone: clean(pick("phone") ?? base?.phone, "\u0E42\u0E17\u0E23\u0E28\u0E31\u0E1E\u0E17\u0E4C", 100),
+    latitude: numberInRange(pick("latitude") !== void 0 ? pick("latitude") : base?.latitude, "\u0E25\u0E30\u0E15\u0E34\u0E08\u0E39\u0E14", -90, 90, true),
+    longitude: numberInRange(pick("longitude") !== void 0 ? pick("longitude") : base?.longitude, "\u0E25\u0E2D\u0E07\u0E08\u0E34\u0E08\u0E39\u0E14", -180, 180, true),
+    businessStatus: businessRaw,
+    businessStatusNote: clean(pick("businessStatusNote") ?? base?.businessStatusNote, "\u0E2B\u0E21\u0E32\u0E22\u0E40\u0E2B\u0E15\u0E38\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E34\u0E08\u0E01\u0E32\u0E23", 1e3),
+    fiscalYear,
+    assessmentDate: clean(pick("assessmentDate") ?? base?.assessmentDate, "\u0E27\u0E31\u0E19\u0E17\u0E35\u0E48\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19", 40),
+    assessmentStatus: status,
+    assessmentLevel: level,
+    passCriteria,
+    remarks: clean(pick("remarks") ?? base?.remarks, "\u0E2B\u0E21\u0E32\u0E22\u0E40\u0E2B\u0E15\u0E38", 2e3),
+    updatedAt,
+    updatedBy: clean(actor, "\u0E1C\u0E39\u0E49\u0E41\u0E01\u0E49\u0E44\u0E02", 320, true)
+  };
+}
+function registryRow(clinic) {
+  return [clinic.id, clinic.district, clinic.no, clinic.name, clinic.type, clinic.licensee, clinic.address || "", clinic.phone || "", clinic.latitude ?? "", clinic.longitude ?? "", clinic.businessStatus || "\u0E40\u0E1B\u0E34\u0E14\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23", clinic.businessStatusNote || "", clinic.updatedAt || "", clinic.updatedBy || ""];
+}
+function assessmentRow(clinic, id) {
+  return [id || `asm_${randomUUID()}`, clinic.fiscalYear || 2569, clinic.id, clinic.assessmentStatus, clinic.assessmentLevel ?? "", clinic.passCriteria, clinic.assessmentDate || "", clinic.remarks, clinic.updatedAt || "", clinic.updatedBy || ""];
+}
+async function appendValues(spreadsheetId2, token, sheet, columns, values) {
+  await googleRequest(spreadsheetId2, `/values/${encodeURIComponent(sheetRange(sheet, columns))}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: "POST", body: JSON.stringify({ majorDimension: "ROWS", values }) }, token);
+}
+function auditRow(before, after, actor, action) {
+  const clinic = after || before;
+  if (!clinic) throw new Error("\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A Audit Log");
+  return [`audit_${randomUUID()}`, (/* @__PURE__ */ new Date()).toISOString(), clinic.district, clinic.name, before?.assessmentStatus || "", after?.assessmentStatus || action, before?.assessmentLevel ?? "", after?.assessmentLevel ?? "", actor, action];
+}
+function rowData(values) {
+  return {
+    values: values.map((value) => ({
+      userEnteredValue: typeof value === "number" ? { numberValue: value } : typeof value === "boolean" ? { boolValue: value } : { stringValue: String(value) }
+    }))
+  };
+}
+function appendCells(sheetId, values) {
+  return { appendCells: { sheetId, rows: [rowData(values)], fields: "userEnteredValue" } };
+}
+function updateCells(sheetId, rowNumber, values) {
+  return {
+    updateCells: {
+      range: { sheetId, startRowIndex: rowNumber - 1, endRowIndex: rowNumber, startColumnIndex: 0, endColumnIndex: values.length },
+      rows: [rowData(values)],
+      fields: "userEnteredValue"
+    }
+  };
+}
+async function atomicBatchUpdate(spreadsheetId2, token, requests) {
+  await googleRequest(spreadsheetId2, ":batchUpdate", { method: "POST", body: JSON.stringify({ requests }) }, token);
+}
+var sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+async function withMutationLock(lockKey, task) {
+  const spreadsheetId2 = configuredSpreadsheetId();
+  const token = await getServiceAccountAccessToken(WRITE_SCOPE);
+  const lockToken = randomUUID();
+  const lockId = `lock_${lockToken}`;
+  const acquiredAt = (/* @__PURE__ */ new Date()).toISOString();
+  await appendValues(spreadsheetId2, token, AUDIT_LOG_SHEET, "A:J", [[lockId, acquiredAt, "", "", "LOCK", lockKey, "", "", "system", lockToken]]);
+  try {
+    const ownsLock = async () => {
+      const [rows] = await batchGet(spreadsheetId2, token, [AUDIT_LOG_SHEET]);
+      const released = new Set(rows.slice(1).filter((row) => normalizeCell(row[0]).startsWith("unlock_")).map((row) => normalizeCell(row[9])));
+      const activeLocks = rows.slice(1).filter((row) => {
+        const id = normalizeCell(row[0]);
+        const timestamp = Date.parse(normalizeCell(row[1]));
+        return id.startsWith("lock_") && normalizeCell(row[5]) === lockKey && !released.has(normalizeCell(row[9])) && Number.isFinite(timestamp) && timestamp >= Date.now() - 12e4;
+      });
+      return normalizeCell(activeLocks[0]?.[0]) === lockId;
+    };
+    const assertOwnership = async () => {
+      if (!await ownsLock()) throw new ClinicMutationError("CLINIC_LOCK_LOST", "\u0E2A\u0E34\u0E17\u0E18\u0E34\u0E4C\u0E41\u0E01\u0E49\u0E44\u0E02\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E2B\u0E21\u0E14\u0E2D\u0E32\u0E22\u0E38 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E23\u0E35\u0E40\u0E1F\u0E23\u0E0A\u0E41\u0E25\u0E30\u0E25\u0E2D\u0E07\u0E43\u0E2B\u0E21\u0E48\u0E2D\u0E35\u0E01\u0E04\u0E23\u0E31\u0E49\u0E07", 409);
+    };
+    const deadline = Date.now() + 1e4;
+    while (Date.now() < deadline) {
+      if (await ownsLock()) return await task(spreadsheetId2, token, assertOwnership);
+      await sleep(200);
+    }
+    throw new ClinicMutationError("CLINIC_BUSY", "\u0E21\u0E35\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48\u0E01\u0E33\u0E25\u0E31\u0E07\u0E41\u0E01\u0E49\u0E44\u0E02\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E25\u0E2D\u0E07\u0E43\u0E2B\u0E21\u0E48\u0E2D\u0E35\u0E01\u0E04\u0E23\u0E31\u0E49\u0E07", 409);
+  } finally {
+    await appendValues(spreadsheetId2, token, AUDIT_LOG_SHEET, "A:J", [[`unlock_${lockToken}`, (/* @__PURE__ */ new Date()).toISOString(), "", "", "UNLOCK", lockKey, "", "", "system", lockToken]]).catch((error) => {
+      console.error("Unable to release Google Sheets mutation lock", error);
+    });
+  }
+}
+async function mutationContext(spreadsheetId2, token) {
+  const [registryRows, assessmentRows] = await batchGet(spreadsheetId2, token, [CLINIC_REGISTRY_SHEET, ASSESSMENTS_SHEET]);
+  const hasHeaders = (rows, expected) => expected.every((header, index) => normalizeCell(rows[0]?.[index]) === header);
+  if (!hasHeaders(registryRows, REGISTRY_HEADERS)) throw new Error(`\u0E0A\u0E35\u0E15 ${CLINIC_REGISTRY_SHEET} \u0E44\u0E21\u0E48\u0E15\u0E23\u0E07\u0E01\u0E31\u0E1A schema \u0E17\u0E35\u0E48\u0E01\u0E33\u0E2B\u0E19\u0E14`);
+  if (!hasHeaders(assessmentRows, ASSESSMENT_HEADERS)) throw new Error(`\u0E0A\u0E35\u0E15 ${ASSESSMENTS_SHEET} \u0E44\u0E21\u0E48\u0E15\u0E23\u0E07\u0E01\u0E31\u0E1A schema \u0E17\u0E35\u0E48\u0E01\u0E33\u0E2B\u0E19\u0E14`);
+  const metadata = await googleRequest(spreadsheetId2, "?fields=sheets.properties(sheetId,title)", {}, token);
+  const ids = new Map(metadata.sheets?.flatMap((sheet) => sheet.properties?.title && sheet.properties.sheetId !== void 0 ? [[sheet.properties.title, sheet.properties.sheetId]] : []) || []);
+  const registrySheetId = ids.get(CLINIC_REGISTRY_SHEET);
+  const assessmentSheetId = ids.get(ASSESSMENTS_SHEET);
+  const auditSheetId = ids.get(AUDIT_LOG_SHEET);
+  if (registrySheetId === void 0 || assessmentSheetId === void 0 || auditSheetId === void 0) throw new Error("\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E0A\u0E35\u0E15\u0E17\u0E35\u0E48\u0E08\u0E33\u0E40\u0E1B\u0E47\u0E19\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E08\u0E31\u0E14\u0E01\u0E32\u0E23\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01");
+  return { spreadsheetId: spreadsheetId2, token, registryRows, assessmentRows, registrySheetId, assessmentSheetId, auditSheetId };
+}
+function findUniqueRegistry(records, clinicId) {
+  const matches = records.filter((record) => record.clinicId === clinicId && !isSoftDeleted(record));
+  if (!matches.length) throw new ClinicMutationError("CLINIC_NOT_FOUND", "\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01\u0E17\u0E35\u0E48\u0E23\u0E30\u0E1A\u0E38", 404);
+  if (matches.length > 1) throw new ClinicMutationError("DUPLICATE_CLINIC_ID", "\u0E1E\u0E1A clinicId \u0E0B\u0E49\u0E33\u0E43\u0E19 ClinicRegistry \u0E01\u0E23\u0E38\u0E13\u0E32\u0E41\u0E01\u0E49\u0E44\u0E02\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E01\u0E48\u0E2D\u0E19", 409);
+  return matches[0];
+}
+function normalizedExisting(record, assessments) {
+  return mergeClinicData([record], assessments)[0];
+}
+function assertExpectedVersion(input, currentVersion) {
+  const expected = normalizeCell(input.expectedVersion);
+  if (!expected || expected !== currentVersion) {
+    throw new ClinicMutationError("CLINIC_VERSION_CONFLICT", "\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01\u0E16\u0E39\u0E01\u0E41\u0E01\u0E49\u0E44\u0E02\u0E42\u0E14\u0E22\u0E1C\u0E39\u0E49\u0E43\u0E0A\u0E49\u0E2D\u0E37\u0E48\u0E19\u0E41\u0E25\u0E49\u0E27 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E23\u0E35\u0E40\u0E1F\u0E23\u0E0A\u0E01\u0E48\u0E2D\u0E19\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01\u0E2D\u0E35\u0E01\u0E04\u0E23\u0E31\u0E49\u0E07", 409);
+  }
+}
+async function createClinic(input, actor) {
+  return withMutationLock("clinic:create", async (spreadsheetId2, token, assertOwnership) => {
+    const context = await mutationContext(spreadsheetId2, token);
+    const records = parseClinicRegistryRows(context.registryRows);
+    const candidate = sanitizeClinic({ ...input, no: input.no ?? Math.max(0, ...records.filter((record) => normalizeDistrict(input.district) === record.district).map((record) => record.no)) + 1 }, void 0, actor, true);
+    if (records.some((record) => record.clinicId === candidate.id)) throw new ClinicMutationError("CLINIC_ID_EXISTS", "clinicId \u0E19\u0E35\u0E49\u0E40\u0E04\u0E22\u0E16\u0E39\u0E01\u0E43\u0E0A\u0E49\u0E07\u0E32\u0E19\u0E41\u0E25\u0E49\u0E27\u0E41\u0E25\u0E30\u0E44\u0E21\u0E48\u0E2A\u0E32\u0E21\u0E32\u0E23\u0E16\u0E19\u0E33\u0E01\u0E25\u0E31\u0E1A\u0E21\u0E32\u0E43\u0E0A\u0E49\u0E0B\u0E49\u0E33\u0E44\u0E14\u0E49", 409);
+    await assertOwnership();
+    await atomicBatchUpdate(spreadsheetId2, token, [
+      appendCells(context.registrySheetId, registryRow(candidate)),
+      appendCells(context.assessmentSheetId, assessmentRow(candidate)),
+      appendCells(context.auditSheetId, auditRow(void 0, candidate, actor, "CREATE"))
+    ]);
+    return candidate;
+  });
+}
+async function updateClinic(clinicId, input, actor) {
+  const id = validateClinicId(clinicId);
+  if (input.clinicId !== void 0 && validateClinicId(input.clinicId) !== id) throw new ClinicMutationError("IMMUTABLE_CLINIC_ID", "\u0E44\u0E21\u0E48\u0E2A\u0E32\u0E21\u0E32\u0E23\u0E16\u0E40\u0E1B\u0E25\u0E35\u0E48\u0E22\u0E19 clinicId \u0E44\u0E14\u0E49", 400);
+  return withMutationLock(`clinic:${id}`, async (spreadsheetId2, token, assertOwnership) => {
+    const context = await mutationContext(spreadsheetId2, token);
+    const assessments = parseAssessmentRows(context.assessmentRows);
+    const record = findUniqueRegistry(parseClinicRegistryRows(context.registryRows), id);
+    const before = normalizedExisting(record, assessments);
+    assertExpectedVersion(input, before.version);
+    if (input.fiscalYear !== void 0 && Number(input.fiscalYear) !== before.fiscalYear) {
+      throw new ClinicMutationError("IMMUTABLE_FISCAL_YEAR", "\u0E44\u0E21\u0E48\u0E2A\u0E32\u0E21\u0E32\u0E23\u0E16\u0E40\u0E1B\u0E25\u0E35\u0E48\u0E22\u0E19\u0E1B\u0E35\u0E07\u0E1A\u0E1B\u0E23\u0E30\u0E21\u0E32\u0E13\u0E02\u0E2D\u0E07\u0E1C\u0E25\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E40\u0E14\u0E34\u0E21\u0E44\u0E14\u0E49", 400);
+    }
+    const after = sanitizeClinic({ ...input, fiscalYear: before.fiscalYear }, before, actor, false);
+    const sameYear = assessments.filter((item) => item.clinicId === id && item.fiscalYear === after.fiscalYear);
+    if (sameYear.length > 1) throw new ClinicMutationError("DUPLICATE_ASSESSMENT", "\u0E1E\u0E1A\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E1B\u0E23\u0E30\u0E40\u0E21\u0E34\u0E19\u0E0B\u0E49\u0E33\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01\u0E41\u0E25\u0E30\u0E1B\u0E35\u0E07\u0E1A\u0E1B\u0E23\u0E30\u0E21\u0E32\u0E13\u0E19\u0E35\u0E49", 409);
+    const assessment = sameYear[0];
+    const requests = [updateCells(context.registrySheetId, record.rowNumber, registryRow(after))];
+    requests.push(assessment ? updateCells(context.assessmentSheetId, assessment.rowNumber, assessmentRow(after, assessment.id)) : appendCells(context.assessmentSheetId, assessmentRow(after)));
+    requests.push(appendCells(context.auditSheetId, auditRow(before, after, actor, "UPDATE")));
+    await assertOwnership();
+    await atomicBatchUpdate(spreadsheetId2, token, requests);
+    return after;
+  });
+}
+async function deleteClinic(clinicId, actor, input = {}) {
+  const id = validateClinicId(clinicId);
+  return withMutationLock(`clinic:${id}`, async (spreadsheetId2, token, assertOwnership) => {
+    const context = await mutationContext(spreadsheetId2, token);
+    const assessments = parseAssessmentRows(context.assessmentRows);
+    const record = findUniqueRegistry(parseClinicRegistryRows(context.registryRows), id);
+    const before = normalizedExisting(record, assessments);
+    assertExpectedVersion(input, before.version);
+    const deleted = {
+      ...before,
+      businessStatus: "\u0E1B\u0E34\u0E14\u0E01\u0E34\u0E08\u0E01\u0E32\u0E23",
+      businessStatusNote: `${DELETED_MARKER} ${before.businessStatusNote || ""}`.trim(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedBy: clean(actor, "\u0E1C\u0E39\u0E49\u0E41\u0E01\u0E49\u0E44\u0E02", 320, true)
+    };
+    await assertOwnership();
+    await atomicBatchUpdate(spreadsheetId2, token, [
+      updateCells(context.registrySheetId, record.rowNumber, registryRow(deleted)),
+      appendCells(context.auditSheetId, auditRow(before, void 0, actor, "DELETE"))
+    ]);
+    return before;
+  });
 }
 
 // src/server/telegram.ts
@@ -516,8 +838,8 @@ async function sendClinicUpdateNotification(notification) {
 }
 
 // src/server/userRepository.ts
-import { createHash } from "node:crypto";
-var WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+import { createHash as createHash2 } from "node:crypto";
+var WRITE_SCOPE2 = "https://www.googleapis.com/auth/spreadsheets";
 var SYSTEM_USERS_SHEET = "SystemUsers";
 var OWNER_EMAIL = "akaporn1234@gmail.com";
 var USER_HEADERS = [
@@ -577,7 +899,7 @@ function isStatus(value) {
   return ["pending", "active", "suspended", "blocked"].includes(value);
 }
 function stableUserId(provider, identifier) {
-  const digest = createHash("sha256").update(`${provider}:${normalizeIdentifier(identifier)}`).digest("hex").slice(0, 18);
+  const digest = createHash2("sha256").update(`${provider}:${normalizeIdentifier(identifier)}`).digest("hex").slice(0, 18);
   return `usr_${provider}_${digest}`;
 }
 function userToRow(user) {
@@ -618,8 +940,8 @@ function parseUserRows(rows) {
     return [user];
   });
 }
-async function googleRequest(path2, init = {}, accessToken) {
-  const token = accessToken || await getServiceAccountAccessToken(WRITE_SCOPE);
+async function googleRequest2(path2, init = {}, accessToken) {
+  const token = accessToken || await getServiceAccountAccessToken(WRITE_SCOPE2);
   const response = await fetch(`https://sheets.googleapis.com/v4/${path2}`, {
     ...init,
     headers: {
@@ -641,14 +963,14 @@ async function googleRequest(path2, init = {}, accessToken) {
   return json;
 }
 async function getSheetMetadata(accessToken) {
-  return googleRequest(
+  return googleRequest2(
     `spreadsheets/${encodeURIComponent(spreadsheetId())}?fields=sheets.properties(sheetId,title)`,
     {},
     accessToken
   );
 }
 async function writeHeader(accessToken) {
-  await googleRequest(
+  await googleRequest2(
     `spreadsheets/${encodeURIComponent(spreadsheetId())}/values/${encodeURIComponent(
       sheetRange2(`A1:Q1`)
     )}?valueInputOption=RAW`,
@@ -660,14 +982,14 @@ async function writeHeader(accessToken) {
   );
 }
 async function ensureUsersSheet() {
-  const accessToken = await getServiceAccountAccessToken(WRITE_SCOPE);
+  const accessToken = await getServiceAccountAccessToken(WRITE_SCOPE2);
   let metadata = await getSheetMetadata(accessToken);
   let properties = metadata.sheets?.find(
     (sheet) => sheet.properties?.title === SYSTEM_USERS_SHEET
   )?.properties;
   if (properties?.sheetId === void 0) {
     try {
-      await googleRequest(
+      await googleRequest2(
         `spreadsheets/${encodeURIComponent(spreadsheetId())}:batchUpdate`,
         {
           method: "POST",
@@ -709,7 +1031,7 @@ async function ensureUsersSheet() {
   return { accessToken, sheetId: properties.sheetId };
 }
 async function loadRows(accessToken) {
-  const result = await googleRequest(
+  const result = await googleRequest2(
     `spreadsheets/${encodeURIComponent(spreadsheetId())}/values/${encodeURIComponent(
       sheetRange2("A:Q")
     )}?majorDimension=ROWS`,
@@ -720,7 +1042,7 @@ async function loadRows(accessToken) {
   return { rows, users: parseUserRows(rows) };
 }
 async function appendUser(user, accessToken) {
-  await googleRequest(
+  await googleRequest2(
     `spreadsheets/${encodeURIComponent(spreadsheetId())}/values/${encodeURIComponent(
       sheetRange2("A:Q")
     )}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
@@ -797,7 +1119,7 @@ async function updateUser(selector, changes) {
   };
   const headerOffset = rows.length > 0 ? 2 : 1;
   const rowNumber = index + headerOffset;
-  await googleRequest(
+  await googleRequest2(
     `spreadsheets/${encodeURIComponent(spreadsheetId())}/values/${encodeURIComponent(
       sheetRange2(`A${rowNumber}:Q${rowNumber}`)
     )}?valueInputOption=RAW`,
@@ -823,7 +1145,7 @@ async function deleteUser(selector) {
   if (normalizeIdentifier(users[index].emailOrId) === OWNER_EMAIL) {
     throw new Error("OWNER_PROTECTED");
   }
-  await googleRequest(
+  await googleRequest2(
     `spreadsheets/${encodeURIComponent(spreadsheetId())}:batchUpdate`,
     {
       method: "POST",
@@ -1042,6 +1364,48 @@ async function requireSuperAdmin(req, res) {
   }
   return currentUser;
 }
+async function requireActiveAdmin(req, res) {
+  const session = readSession(req);
+  if (!session) {
+    res.status(401).json({
+      status: "error",
+      code: "AUTH_REQUIRED",
+      message: "\u0E01\u0E23\u0E38\u0E13\u0E32\u0E40\u0E02\u0E49\u0E32\u0E2A\u0E39\u0E48\u0E23\u0E30\u0E1A\u0E1A\u0E14\u0E49\u0E27\u0E22\u0E1A\u0E31\u0E0D\u0E0A\u0E35\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48\u0E01\u0E48\u0E2D\u0E19\u0E08\u0E31\u0E14\u0E01\u0E32\u0E23\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01"
+    });
+    return null;
+  }
+  const currentUser = await findUser(session.provider, session.emailOrId);
+  if (!currentUser || currentUser.status !== "active" || currentUser.role !== "admin" && currentUser.role !== "super_admin") {
+    res.status(403).json({
+      status: "error",
+      code: "ACTIVE_ADMIN_REQUIRED",
+      message: "\u0E04\u0E33\u0E2A\u0E31\u0E48\u0E07\u0E19\u0E35\u0E49\u0E2D\u0E19\u0E38\u0E0D\u0E32\u0E15\u0E40\u0E09\u0E1E\u0E32\u0E30 Admin \u0E2B\u0E23\u0E37\u0E2D Super Admin \u0E17\u0E35\u0E48\u0E43\u0E0A\u0E49\u0E07\u0E32\u0E19\u0E2D\u0E22\u0E39\u0E48"
+    });
+    return null;
+  }
+  return currentUser;
+}
+function clinicMutationError(res, error) {
+  if (error instanceof ClinicMutationError) {
+    return res.status(error.status).json({
+      status: "error",
+      code: error.code,
+      message: error.message
+    });
+  }
+  console.error("Clinic mutation failed", error);
+  return res.status(502).json({
+    status: "error",
+    code: "CLINIC_MUTATION_FAILED",
+    message: error instanceof Error ? error.message : "\u0E44\u0E21\u0E48\u0E2A\u0E32\u0E21\u0E32\u0E23\u0E16\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E04\u0E25\u0E34\u0E19\u0E34\u0E01\u0E44\u0E14\u0E49"
+  });
+}
+function clinicMutationInput(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return {};
+  const record = body;
+  const nested = record.clinic;
+  return nested && typeof nested === "object" && !Array.isArray(nested) ? nested : record;
+}
 app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -1081,6 +1445,44 @@ app.get("/api/google-sheet", async (req, res) => {
       code: "GOOGLE_SHEET_SYNC_FAILED",
       message
     });
+  }
+});
+app.post("/api/clinics", async (req, res) => {
+  try {
+    const actor = await requireActiveAdmin(req, res);
+    if (!actor) return;
+    const clinic = await createClinic(clinicMutationInput(req.body), actor.emailOrId);
+    return res.status(201).json({ status: "success", clinic });
+  } catch (error) {
+    return clinicMutationError(res, error);
+  }
+});
+app.patch("/api/clinics/:clinicId", async (req, res) => {
+  try {
+    const actor = await requireActiveAdmin(req, res);
+    if (!actor) return;
+    const clinic = await updateClinic(
+      req.params.clinicId,
+      clinicMutationInput(req.body),
+      actor.emailOrId
+    );
+    return res.json({ status: "success", clinic });
+  } catch (error) {
+    return clinicMutationError(res, error);
+  }
+});
+app.delete("/api/clinics/:clinicId", async (req, res) => {
+  try {
+    const actor = await requireActiveAdmin(req, res);
+    if (!actor) return;
+    const clinic = await deleteClinic(
+      req.params.clinicId,
+      actor.emailOrId,
+      clinicMutationInput(req.body)
+    );
+    return res.json({ status: "success", clinic });
+  } catch (error) {
+    return clinicMutationError(res, error);
   }
 });
 app.post("/api/telegram/clinic-update", async (req, res) => {
@@ -1307,17 +1709,17 @@ app.post("/api/users/register", async (req, res) => {
       message: provider === "google" ? "\u0E23\u0E39\u0E1B\u0E41\u0E1A\u0E1A\u0E2D\u0E35\u0E40\u0E21\u0E25\u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07" : "LINE ID \u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E15\u0E49\u0E2D\u0E07"
     });
   }
-  const clean = (value, maxLength) => String(value || "").trim().slice(0, maxLength);
-  const fullName = `${clean(firstName, 100)} ${clean(lastName, 100)}`.trim() || cleanId;
+  const clean2 = (value, maxLength) => String(value || "").trim().slice(0, maxLength);
+  const fullName = `${clean2(firstName, 100)} ${clean2(lastName, 100)}`.trim() || cleanId;
   const newUser = {
     emailOrId: cleanId,
     name: fullName,
-    firstName: clean(firstName, 100),
-    lastName: clean(lastName, 100),
-    position: clean(position, 200) || "\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48",
-    workGroup: clean(workGroup, 200) || "\u0E01\u0E25\u0E38\u0E48\u0E21\u0E07\u0E32\u0E19",
-    affiliation: clean(affiliation, 200) || "\u0E2A\u0E31\u0E07\u0E01\u0E31\u0E14",
-    phone: clean(phone, 50) || "-",
+    firstName: clean2(firstName, 100),
+    lastName: clean2(lastName, 100),
+    position: clean2(position, 200) || "\u0E40\u0E08\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E17\u0E35\u0E48",
+    workGroup: clean2(workGroup, 200) || "\u0E01\u0E25\u0E38\u0E48\u0E21\u0E07\u0E32\u0E19",
+    affiliation: clean2(affiliation, 200) || "\u0E2A\u0E31\u0E07\u0E01\u0E31\u0E14",
+    phone: clean2(phone, 50) || "-",
     provider,
     role: "admin",
     status: "pending",

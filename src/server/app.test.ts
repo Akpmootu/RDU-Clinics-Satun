@@ -32,16 +32,22 @@ let originalFetch: typeof fetch;
 
 function request(
   path: string,
-  cookie?: string
+  cookie?: string,
+  method = 'GET',
+  body?: unknown
 ): Promise<{ status: number; body: any; headers: http.IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = http.request(
       {
         hostname: '127.0.0.1',
         port,
         path,
-        method: 'GET',
-        headers: cookie ? { Cookie: cookie } : {},
+        method,
+        headers: {
+          ...(cookie ? { Cookie: cookie } : {}),
+          ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
+        },
       },
       (res) => {
         let body = '';
@@ -59,6 +65,7 @@ function request(
       }
     );
     req.on('error', reject);
+    if (payload) req.write(payload);
     req.end();
   });
 }
@@ -116,6 +123,16 @@ test('user list rejects unauthenticated requests', async () => {
   const response = await request('/api/users');
   assert.equal(response.status, 401);
   assert.equal(response.body.code, 'AUTH_REQUIRED');
+});
+
+test('clinic mutations reject unauthenticated requests', async () => {
+  const createResponse = await request('/api/clinics', undefined, 'POST', {});
+  const updateResponse = await request('/api/clinics/STN-001', undefined, 'PATCH', {});
+  const deleteResponse = await request('/api/clinics/STN-001', undefined, 'DELETE');
+  for (const response of [createResponse, updateResponse, deleteResponse]) {
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, 'AUTH_REQUIRED');
+  }
 });
 
 test('pending users cannot access Super Admin APIs even with a valid old token', async () => {
